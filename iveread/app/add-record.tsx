@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
   },
   backIcon: {
     fontSize: 26,
-    color: Palette.textTertiary,
+    color: Palette.textSecondary,
   },
   headerTitle: {
     flex: 1,

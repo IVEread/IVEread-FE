@@ -120,12 +120,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Palette.surface,
-    borderWidth: 1,
-    borderColor: Palette.border,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
   backIcon: {
-    fontSize: 20,
+    fontSize: 26,
     color: Palette.textSecondary,
   },
   headerTitle: {

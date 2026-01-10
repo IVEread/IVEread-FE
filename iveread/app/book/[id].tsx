@@ -102,6 +102,8 @@ const gallerySeed = [
 const feedSeed = [
   {
     id: 'feed-1',
+    name: '서준',
+    time: '2시간 전',
     image: gallerySeed[0],
     caption: '오늘은 3장까지 읽고 핵심 문장을 정리했어요.',
     likes: 4,
@@ -109,6 +111,8 @@ const feedSeed = [
   },
   {
     id: 'feed-2',
+    name: '지민',
+    time: '어제',
     image: gallerySeed[1],
     caption: '모임 전에 밑줄친 문장 다시 읽기.',
     likes: 2,
@@ -116,6 +120,8 @@ const feedSeed = [
   },
   {
     id: 'feed-3',
+    name: '나',
+    time: '방금',
     image: gallerySeed[2],
     caption: '오늘 기록 완료. 다음 주는 4장까지!',
     likes: 6,
@@ -123,6 +129,8 @@ const feedSeed = [
   },
   {
     id: 'feed-4',
+    name: '민지',
+    time: '3일 전',
     image: gallerySeed[3],
     caption: '독서 인증샷 📚',
     likes: 1,
@@ -153,7 +161,7 @@ export default function BookDetailScreen() {
   const [selectedUploadUri, setSelectedUploadUri] = useState<string | null>(null);
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [feedCommentText, setFeedCommentText] = useState('');
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const myEmoji = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊');
 
   const gallery = useMemo(() => gallerySeed, []);
@@ -162,6 +170,7 @@ export default function BookDetailScreen() {
     [feedItems, selectedPostId],
   );
   const galleryCardSize = Math.floor((width - 22 * 2 - 14) / 2);
+  const previewImageHeight = Math.min(Math.floor(width * 1.35), Math.floor(height * 0.68));
 
   const handleAddSentence = () => {
     if (!sentenceText.trim()) {
@@ -213,6 +222,8 @@ export default function BookDetailScreen() {
     setFeedItems((prev) => [
       {
         id: `feed-${Date.now()}`,
+        name: profile.nickname || '나',
+        time: '방금',
         image: selectedUploadUri ? { uri: selectedUploadUri } : selectedUploadImage!,
         caption: uploadCaption.trim(),
         likes: 0,
@@ -324,11 +335,13 @@ export default function BookDetailScreen() {
             <Text style={styles.bookCoverText}>표지</Text>
           </View>
           <View style={styles.bookInfo}>
-            <Text style={styles.bookTitle}>{detail.title}</Text>
-            <Text style={styles.bookAuthor}>{detail.author}</Text>
-            <View style={styles.bookTag}>
-              <Text style={styles.bookTagText}>{detail.tag}</Text>
+            <View style={styles.bookTitleRow}>
+              <Text style={styles.bookTitle}>{detail.title}</Text>
+              <View style={styles.bookTagInline}>
+                <Text style={styles.bookTagText}>{detail.tag}</Text>
+              </View>
             </View>
+            <Text style={styles.bookAuthor}>{detail.author}</Text>
           </View>
         </View>
 
@@ -502,7 +515,7 @@ export default function BookDetailScreen() {
             {feedItems.map((item) => (
               <Pressable
                 key={item.id}
-                style={[styles.galleryItem, { width: galleryCardSize, height: galleryCardSize }]}
+                style={[styles.galleryItem, { width: galleryCardSize }]}
                 onPress={() => setSelectedPostId(item.id)}
                 accessibilityRole="button">
                 <Image source={item.image} style={styles.galleryImage} />
@@ -515,70 +528,90 @@ export default function BookDetailScreen() {
       <Modal visible={selectedPostId !== null} transparent animationType="fade">
         <View style={styles.previewOverlay}>
           <View style={styles.previewCard}>
-            {selectedPost && <Image source={selectedPost.image} style={styles.previewImage} />}
-            {selectedPost && (
-              <>
-                <Text style={styles.feedCaption}>{selectedPost.caption}</Text>
-                <View style={styles.feedMetaRow}>
-                  <Pressable
-                    style={styles.likeButton}
-                    onPress={() => handleToggleLike(selectedPost.id)}
-                    accessibilityRole="button">
-                    <Text
-                      style={[
-                        styles.likeButtonText,
-                        likedPostIds.has(selectedPost.id) && styles.likeButtonTextActive,
-                      ]}>
-                      {likedPostIds.has(selectedPost.id) ? '♥' : '♡'}
-                    </Text>
-                  </Pressable>
-                  <Text style={styles.feedMetaText}>좋아요 {selectedPost.likes}</Text>
-                </View>
-                <View style={styles.feedCommentList}>
-                  {selectedPost.comments.length === 0 ? (
-                    <Text style={styles.replyEmptyText}>첫 댓글을 남겨보세요.</Text>
-                  ) : (
-                    selectedPost.comments.map((comment) => (
-                      <View key={comment.id} style={styles.replyRow}>
-                        <View style={styles.replyAvatar}>
-                          <Text style={styles.replyAvatarText}>
-                            {comment.name === '나' ? myEmoji : comment.name.slice(0, 1)}
-                          </Text>
-                        </View>
-                        <View style={styles.replyBody}>
-                          <View style={styles.replyHeader}>
-                            <Text style={styles.replyName}>{comment.name}</Text>
-                            <Text style={styles.replyTime}>{comment.time}</Text>
-                          </View>
-                          <Text style={styles.replyText}>{comment.text}</Text>
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </View>
-                <View style={styles.replyInputRow}>
-                  <TextInput
-                    value={feedCommentText}
-                    onChangeText={setFeedCommentText}
-                    placeholder="댓글을 입력하세요..."
-                    placeholderTextColor={Palette.textTertiary}
-                    style={styles.replyInput}
-                  />
-                  <Pressable
-                    style={styles.sendButton}
-                    onPress={handleAddFeedComment}
-                    accessibilityRole="button">
-                    <Text style={styles.sendButtonText}>↗</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
             <Pressable
-              style={styles.previewClose}
+              style={styles.previewCloseIcon}
               onPress={() => setSelectedPostId(null)}
               accessibilityRole="button">
-              <Text style={styles.previewCloseText}>닫기</Text>
+              <Text style={styles.previewCloseIconText}>×</Text>
             </Pressable>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.previewContent}>
+              {selectedPost && (
+                <View style={styles.previewHeaderRow}>
+                  <View style={styles.previewUserAvatar}>
+                    <Text style={styles.previewUserInitial}>
+                      {selectedPost.name === '나' ? myEmoji : selectedPost.name.slice(0, 1)}
+                    </Text>
+                  </View>
+                  <View style={styles.previewUserMeta}>
+                    <Text style={styles.previewUserName}>{selectedPost.name}</Text>
+                    <Text style={styles.previewUserTime}>{selectedPost.time}</Text>
+                  </View>
+                </View>
+              )}
+              {selectedPost && (
+                <Image
+                  source={selectedPost.image}
+                  style={[styles.previewImage, { height: previewImageHeight }]}
+                />
+              )}
+              {selectedPost && (
+                <>
+                  <Text style={styles.feedCaption}>{selectedPost.caption}</Text>
+                  <View style={styles.feedMetaRow}>
+                    <Pressable
+                      style={styles.likeButton}
+                      onPress={() => handleToggleLike(selectedPost.id)}
+                      accessibilityRole="button">
+                      <Text
+                        style={[
+                          styles.likeButtonText,
+                          likedPostIds.has(selectedPost.id) && styles.likeButtonTextActive,
+                        ]}>
+                        {likedPostIds.has(selectedPost.id) ? '♥' : '♡'}
+                      </Text>
+                    </Pressable>
+                    <Text style={styles.feedMetaText}>좋아요 {selectedPost.likes}</Text>
+                  </View>
+                  <View style={styles.feedCommentList}>
+                    {selectedPost.comments.length === 0 ? (
+                      <Text style={styles.replyEmptyText}>첫 댓글을 남겨보세요.</Text>
+                    ) : (
+                      selectedPost.comments.map((comment) => (
+                        <View key={comment.id} style={styles.replyRow}>
+                          <View style={styles.replyAvatar}>
+                            <Text style={styles.replyAvatarText}>
+                              {comment.name === '나' ? myEmoji : comment.name.slice(0, 1)}
+                            </Text>
+                          </View>
+                          <View style={styles.replyBody}>
+                            <View style={styles.replyHeader}>
+                              <Text style={styles.replyName}>{comment.name}</Text>
+                              <Text style={styles.replyTime}>{comment.time}</Text>
+                            </View>
+                            <Text style={styles.replyText}>{comment.text}</Text>
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                  <View style={[styles.replyInputRow, styles.previewReplyInputRow]}>
+                    <TextInput
+                      value={feedCommentText}
+                      onChangeText={setFeedCommentText}
+                      placeholder="댓글을 입력하세요..."
+                      placeholderTextColor={Palette.textTertiary}
+                      style={styles.replyInput}
+                    />
+                    <Pressable
+                      style={[styles.sendButton, styles.previewSendButton]}
+                      onPress={handleAddFeedComment}
+                      accessibilityRole="button">
+                      <Text style={[styles.sendButtonText, styles.previewSendButtonText]}>↗</Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -694,13 +727,14 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   bookCover: {
-    width: 72,
-    height: 72,
-    borderRadius: 14,
+    width: 96,
+    aspectRatio: 2 / 3,
+    borderRadius: 12,
     backgroundColor: Palette.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: 16,
+    overflow: 'hidden',
   },
   bookCoverText: {
     fontSize: 12,
@@ -710,23 +744,29 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  bookTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    rowGap: 6,
+    columnGap: 8,
+    marginBottom: 6,
+  },
   bookTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '700',
     color: Palette.textPrimary,
+    letterSpacing: -0.2,
   },
   bookAuthor: {
-    fontSize: 12,
+    fontSize: 13,
     color: Palette.textSecondary,
-    marginTop: 4,
   },
-  bookTag: {
-    alignSelf: 'flex-start',
+  bookTagInline: {
     backgroundColor: Palette.accentSoft,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    marginTop: 10,
   },
   bookTagText: {
     fontSize: 11,
@@ -1038,6 +1078,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   galleryItem: {
+    aspectRatio: 1,
     borderRadius: 16,
     backgroundColor: Palette.surface,
     borderWidth: 1,
@@ -1083,39 +1124,42 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   feedCaption: {
-    marginTop: 12,
-    fontSize: 13,
+    marginTop: 14,
+    fontSize: 14,
     color: Palette.textPrimary,
-    lineHeight: 19,
+    lineHeight: 20,
   },
   feedMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
   },
   likeButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: Palette.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
   },
   likeButtonText: {
-    fontSize: 13,
+    fontSize: 14,
     color: Palette.accent,
   },
   feedMetaText: {
-    fontSize: 12,
+    fontSize: 13,
     color: Palette.textSecondary,
   },
   likeButtonTextActive: {
     color: '#E25555',
   },
   feedCommentList: {
-    marginTop: 12,
-    marginBottom: 10,
+    marginTop: 14,
+    marginBottom: 12,
+    backgroundColor: Palette.background,
+    borderRadius: 16,
+    padding: 12,
   },
   uploadCard: {
     width: '100%',
@@ -1153,6 +1197,7 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: 14,
     marginBottom: 10,
+    resizeMode: 'cover',
   },
   uploadImageOption: {
     width: 72,
@@ -1217,30 +1262,84 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: 8,
   },
   previewCard: {
     width: '100%',
-    borderRadius: 18,
+    height: '88%',
+    maxHeight: '90%',
+    borderRadius: 22,
     backgroundColor: Palette.surface,
     padding: 16,
+    ...Shadows.card,
+  },
+  previewContent: {
+    paddingTop: 10,
+    paddingBottom: 16,
+  },
+  previewCloseIcon: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Palette.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  previewCloseIconText: {
+    fontSize: 18,
+    color: Palette.textSecondary,
+    marginTop: -1,
+  },
+  previewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  previewUserAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Palette.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  previewUserInitial: {
+    fontSize: 14,
+    color: Palette.textSecondary,
+  },
+  previewUserMeta: {
+    flex: 1,
+  },
+  previewUserName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Palette.textPrimary,
+  },
+  previewUserTime: {
+    marginTop: 2,
+    fontSize: 11,
+    color: Palette.textTertiary,
   },
   previewImage: {
     width: '100%',
-    aspectRatio: 1,
-    borderRadius: 14,
+    borderRadius: 18,
+    backgroundColor: Palette.accentSoft,
+    resizeMode: 'cover',
   },
-  previewClose: {
-    marginTop: 14,
-    alignSelf: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: Palette.accent,
+  previewReplyInputRow: {
+    marginTop: 4,
   },
-  previewCloseText: {
-    color: Palette.surface,
-    fontSize: 12,
-    fontWeight: '600',
+  previewSendButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  previewSendButtonText: {
+    fontSize: 13,
   },
 });
