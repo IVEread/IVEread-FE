@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { useProfile } from '@/contexts/profile-context';
@@ -70,33 +71,23 @@ const highlightSentencesSeed = [
     page: 'p. 45',
     text: '“전쟁은 평화, 자유는 예속, 무지는 힘이다.”',
     name: '지민',
+    replies: [
+      { id: 'r-1', name: '서준', time: '1시간 전', text: '이 문장 진짜 소름...' },
+    ],
   },
   {
     id: 'p89',
     page: 'p. 89',
     text: '“빅 브라더가 당신을 지켜보고 있다.”',
     name: '서준',
+    replies: [],
   },
   {
     id: 'p156',
     page: 'p. 156',
     text: '“과거를 지배하는 자가 미래를 지배하고, 현재를 지배하는 자가 과거를 지배한다.”',
     name: '나',
-  },
-];
-
-const commentsSeed = [
-  {
-    id: 'c1',
-    name: '지민',
-    time: '2시간 전',
-    text: '이 책 정말 무섭네요. 지금 우리 사회와 너무 비슷한 것 같아요.',
-  },
-  {
-    id: 'c2',
-    name: '서준',
-    time: '1시간 전',
-    text: '오웰의 통찰력이 정말 대단한 것 같아요. 70년 전에 쓴 책인데도 현재 사회를 예견한 듯해요.',
+    replies: [],
   },
 ];
 // 추후 백엔드 연동 시 DB 반영 예정
@@ -106,6 +97,37 @@ const gallerySeed = [
   require('../../assets/images/partial-react-logo.png'),
   require('../../assets/images/icon.png'),
   require('../../assets/images/splash-icon.png'),
+];
+
+const feedSeed = [
+  {
+    id: 'feed-1',
+    image: gallerySeed[0],
+    caption: '오늘은 3장까지 읽고 핵심 문장을 정리했어요.',
+    likes: 4,
+    comments: [{ id: 'fc-1', name: '서준', time: '2시간 전', text: '문장 공유해줘!' }],
+  },
+  {
+    id: 'feed-2',
+    image: gallerySeed[1],
+    caption: '모임 전에 밑줄친 문장 다시 읽기.',
+    likes: 2,
+    comments: [],
+  },
+  {
+    id: 'feed-3',
+    image: gallerySeed[2],
+    caption: '오늘 기록 완료. 다음 주는 4장까지!',
+    likes: 6,
+    comments: [{ id: 'fc-2', name: '지민', time: '방금', text: '고생했어!' }],
+  },
+  {
+    id: 'feed-4',
+    image: gallerySeed[3],
+    caption: '독서 인증샷 📚',
+    likes: 1,
+    comments: [],
+  },
 ];
 
 export default function BookDetailScreen() {
@@ -119,13 +141,26 @@ export default function BookDetailScreen() {
   const [isAddingSentence, setIsAddingSentence] = useState(false);
   const [sentenceText, setSentenceText] = useState('');
   const [sentencePage, setSentencePage] = useState('');
-  const [commentList, setCommentList] = useState(commentsSeed);
-  const [commentText, setCommentText] = useState('');
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
+  const [openReplyId, setOpenReplyId] = useState<string | null>(null);
+  const [feedItems, setFeedItems] = useState(feedSeed);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadCaption, setUploadCaption] = useState('');
+  const [selectedUploadImage, setSelectedUploadImage] = useState<(typeof gallerySeed)[number] | null>(
+    null,
+  );
+  const [selectedUploadUri, setSelectedUploadUri] = useState<string | null>(null);
+  const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+  const [feedCommentText, setFeedCommentText] = useState('');
   const { width } = useWindowDimensions();
   const myEmoji = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊');
 
   const gallery = useMemo(() => gallerySeed, []);
+  const selectedPost = useMemo(
+    () => (selectedPostId ? feedItems.find((item) => item.id === selectedPostId) ?? null : null),
+    [feedItems, selectedPostId],
+  );
   const galleryCardSize = Math.floor((width - 22 * 2 - 14) / 2);
 
   const handleAddSentence = () => {
@@ -135,7 +170,7 @@ export default function BookDetailScreen() {
     }
     const pageLabel = sentencePage.trim() ? `p. ${sentencePage.trim()}` : 'p. ?';
     setSentences((prev) => [
-      { id: `p-${Date.now()}`, page: pageLabel, text: sentenceText.trim(), name: '나' },
+      { id: `p-${Date.now()}`, page: pageLabel, text: sentenceText.trim(), name: '나', replies: [] },
       ...prev,
     ]);
     setSentenceText('');
@@ -143,16 +178,133 @@ export default function BookDetailScreen() {
     setIsAddingSentence(false);
   };
 
-  const handleAddComment = () => {
-    if (!commentText.trim()) {
+  const handleAddReply = (sentenceId: string) => {
+    const message = replyInputs[sentenceId]?.trim();
+    if (!message) {
+      Alert.alert('안내', '답글을 입력해 주세요.');
+      return;
+    }
+    setSentences((prev) =>
+      prev.map((sentence) =>
+        sentence.id === sentenceId
+          ? {
+              ...sentence,
+              replies: [
+                ...(sentence.replies ?? []),
+                { id: `r-${Date.now()}`, name: '나', time: '방금', text: message },
+              ],
+            }
+          : sentence,
+      ),
+    );
+    setReplyInputs((prev) => ({ ...prev, [sentenceId]: '' }));
+    setOpenReplyId(null);
+  };
+
+  const handleUploadFeed = () => {
+    if (!selectedUploadImage && !selectedUploadUri) {
+      Alert.alert('안내', '사진을 선택해 주세요.');
+      return;
+    }
+    if (!uploadCaption.trim()) {
+      Alert.alert('안내', '사진과 글을 모두 입력해 주세요.');
+      return;
+    }
+    setFeedItems((prev) => [
+      {
+        id: `feed-${Date.now()}`,
+        image: selectedUploadUri ? { uri: selectedUploadUri } : selectedUploadImage!,
+        caption: uploadCaption.trim(),
+        likes: 0,
+        comments: [],
+      },
+      ...prev,
+    ]);
+    setSelectedUploadImage(null);
+    setSelectedUploadUri(null);
+    setUploadCaption('');
+    setIsUploadOpen(false);
+  };
+
+  const handleToggleLike = (postId: string) => {
+    setLikedPostIds((prev) => {
+      const next = new Set(prev);
+      const isLiked = next.has(postId);
+      if (isLiked) {
+        next.delete(postId);
+      } else {
+        next.add(postId);
+      }
+      setFeedItems((items) =>
+        items.map((item) =>
+          item.id === postId
+            ? { ...item, likes: Math.max(0, item.likes + (isLiked ? -1 : 1)) }
+            : item,
+        ),
+      );
+      return next;
+    });
+  };
+
+  const handlePickPhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('권한 필요', '사진을 선택하려면 사진 접근 권한이 필요해요.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      const uri = result.assets?.[0]?.uri;
+      if (uri) {
+        setSelectedUploadUri(uri);
+        setSelectedUploadImage(null);
+      }
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('권한 필요', '사진을 촬영하려면 카메라 접근 권한이 필요해요.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      const uri = result.assets?.[0]?.uri;
+      if (uri) {
+        setSelectedUploadUri(uri);
+        setSelectedUploadImage(null);
+      }
+    }
+  };
+
+
+  const handleAddFeedComment = () => {
+    if (!selectedPostId || !feedCommentText.trim()) {
       Alert.alert('안내', '댓글을 입력해 주세요.');
       return;
     }
-    setCommentList((prev) => [
-      ...prev,
-      { id: `c-${Date.now()}`, name: '나', time: '방금', text: commentText.trim() },
-    ]);
-    setCommentText('');
+    const message = feedCommentText.trim();
+    setFeedItems((prev) =>
+      prev.map((item) =>
+        item.id === selectedPostId
+          ? {
+              ...item,
+              comments: [
+                ...(item.comments ?? []),
+                { id: `fc-${Date.now()}`, name: '나', time: '방금', text: message },
+              ],
+            }
+          : item,
+      ),
+    );
+    setFeedCommentText('');
   };
 
   return (
@@ -163,7 +315,7 @@ export default function BookDetailScreen() {
           <Pressable onPress={() => router.back()} style={styles.backButton}>
             <Text style={styles.backIcon}>‹</Text>
           </Pressable>
-          <Text style={styles.headerTitle}>교환독서</Text>
+          <Text style={styles.headerTitle}>교환독서 상세 페이지</Text>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -283,88 +435,212 @@ export default function BookDetailScreen() {
                   </View>
                   <Text style={styles.sentenceName}>{item.name}</Text>
                 </View>
+                <View style={styles.replySection}>
+                  {item.replies && item.replies.length > 0 ? (
+                    item.replies.map((reply) => (
+                      <View key={reply.id} style={styles.replyRow}>
+                        <View style={styles.replyAvatar}>
+                          <Text style={styles.replyAvatarText}>
+                            {reply.name === '나' ? myEmoji : reply.name.slice(0, 1)}
+                          </Text>
+                        </View>
+                        <View style={styles.replyBody}>
+                          <View style={styles.replyHeader}>
+                            <Text style={styles.replyName}>{reply.name}</Text>
+                            <Text style={styles.replyTime}>{reply.time}</Text>
+                          </View>
+                          <Text style={styles.replyText}>{reply.text}</Text>
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.replyEmptyText}>첫 번째 답글을 남겨보세요.</Text>
+                  )}
+                  {openReplyId === item.id ? (
+                    <View style={styles.replyInputRow}>
+                      <TextInput
+                        value={replyInputs[item.id] ?? ''}
+                        onChangeText={(value) =>
+                          setReplyInputs((prev) => ({ ...prev, [item.id]: value }))
+                        }
+                        placeholder="답글을 입력하세요..."
+                        placeholderTextColor={Palette.textTertiary}
+                        style={styles.replyInput}
+                      />
+                      <Pressable
+                        style={styles.sendButton}
+                        onPress={() => handleAddReply(item.id)}
+                        accessibilityRole="button">
+                        <Text style={styles.sendButtonText}>↗</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      style={styles.replyToggleButton}
+                      onPress={() => setOpenReplyId(item.id)}
+                      accessibilityRole="button">
+                      <Text style={styles.replyToggleText}>답글 달기</Text>
+                    </Pressable>
+                  )}
+                </View>
               </View>
             ))
           )}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>댓글</Text>
-          <View style={styles.commentCard}>
-            {commentList.length === 0 ? (
-              <Text style={styles.emptyText}>첫 번째 댓글을 남겨보세요.</Text>
-            ) : (
-              commentList.map((comment, index) => (
-                <View key={comment.id} style={styles.commentRow}>
-                  <View style={styles.commentAvatar}>
-                    <Text style={styles.commentAvatarText}>
-                      {comment.name === '나' ? myEmoji : comment.name.slice(0, 1)}
-                    </Text>
-                  </View>
-                  <View style={styles.commentBody}>
-                    <View style={styles.commentHeader}>
-                      <Text style={styles.commentName}>{comment.name}</Text>
-                      <Text style={styles.commentTime}>{comment.time}</Text>
-                    </View>
-                    <Text style={styles.commentText}>{comment.text}</Text>
-                  </View>
-                  {index < commentList.length - 1 && <View style={styles.commentDivider} />}
-                </View>
-              ))
-            )}
-            <View style={styles.commentInputRow}>
-              <TextInput
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholder="댓글을 입력하세요..."
-                placeholderTextColor={Palette.textTertiary}
-                style={styles.commentInput}
-              />
-              <Pressable
-                style={styles.sendButton}
-                onPress={handleAddComment}
-                accessibilityRole="button">
-                <Text style={styles.sendButtonText}>↗</Text>
-              </Pressable>
-            </View>
+          <View style={[styles.sectionHeaderRow, styles.feedHeaderRow]}>
+            <Text style={styles.sectionTitle}>독서 기록 피드</Text>
+            <Pressable
+              style={styles.feedUploadButton}
+              onPress={() => setIsUploadOpen(true)}
+              accessibilityRole="button">
+              <Text style={styles.feedUploadText}>업로드</Text>
+            </Pressable>
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>독서 인증 갤러리</Text>
           <View style={styles.galleryGrid}>
-            {gallery.map((item, index) => (
+            {feedItems.map((item) => (
               <Pressable
-                key={`photo-${index}`}
+                key={item.id}
                 style={[styles.galleryItem, { width: galleryCardSize, height: galleryCardSize }]}
-                onPress={() => setPreviewIndex(index)}
+                onPress={() => setSelectedPostId(item.id)}
                 accessibilityRole="button">
-                <Image source={item} style={styles.galleryImage} />
+                <Image source={item.image} style={styles.galleryImage} />
               </Pressable>
             ))}
-            <Pressable
-              style={[styles.galleryAdd, { width: galleryCardSize, height: galleryCardSize }]}
-              onPress={() => Alert.alert('준비 중', '사진 추가 기능은 준비 중입니다.')}
-              accessibilityRole="button">
-              <Text style={styles.galleryAddText}>＋</Text>
-              <Text style={styles.galleryAddLabel}>사진 추가</Text>
-            </Pressable>
           </View>
         </View>
       </ScrollView>
 
-      <Modal visible={previewIndex !== null} transparent animationType="fade">
+      <Modal visible={selectedPostId !== null} transparent animationType="fade">
         <View style={styles.previewOverlay}>
           <View style={styles.previewCard}>
-            {previewIndex !== null && (
-              <Image source={gallery[previewIndex]} style={styles.previewImage} />
+            {selectedPost && <Image source={selectedPost.image} style={styles.previewImage} />}
+            {selectedPost && (
+              <>
+                <Text style={styles.feedCaption}>{selectedPost.caption}</Text>
+                <View style={styles.feedMetaRow}>
+                  <Pressable
+                    style={styles.likeButton}
+                    onPress={() => handleToggleLike(selectedPost.id)}
+                    accessibilityRole="button">
+                    <Text
+                      style={[
+                        styles.likeButtonText,
+                        likedPostIds.has(selectedPost.id) && styles.likeButtonTextActive,
+                      ]}>
+                      {likedPostIds.has(selectedPost.id) ? '♥' : '♡'}
+                    </Text>
+                  </Pressable>
+                  <Text style={styles.feedMetaText}>좋아요 {selectedPost.likes}</Text>
+                </View>
+                <View style={styles.feedCommentList}>
+                  {selectedPost.comments.length === 0 ? (
+                    <Text style={styles.replyEmptyText}>첫 댓글을 남겨보세요.</Text>
+                  ) : (
+                    selectedPost.comments.map((comment) => (
+                      <View key={comment.id} style={styles.replyRow}>
+                        <View style={styles.replyAvatar}>
+                          <Text style={styles.replyAvatarText}>
+                            {comment.name === '나' ? myEmoji : comment.name.slice(0, 1)}
+                          </Text>
+                        </View>
+                        <View style={styles.replyBody}>
+                          <View style={styles.replyHeader}>
+                            <Text style={styles.replyName}>{comment.name}</Text>
+                            <Text style={styles.replyTime}>{comment.time}</Text>
+                          </View>
+                          <Text style={styles.replyText}>{comment.text}</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+                <View style={styles.replyInputRow}>
+                  <TextInput
+                    value={feedCommentText}
+                    onChangeText={setFeedCommentText}
+                    placeholder="댓글을 입력하세요..."
+                    placeholderTextColor={Palette.textTertiary}
+                    style={styles.replyInput}
+                  />
+                  <Pressable
+                    style={styles.sendButton}
+                    onPress={handleAddFeedComment}
+                    accessibilityRole="button">
+                    <Text style={styles.sendButtonText}>↗</Text>
+                  </Pressable>
+                </View>
+              </>
             )}
             <Pressable
               style={styles.previewClose}
-              onPress={() => setPreviewIndex(null)}
+              onPress={() => setSelectedPostId(null)}
               accessibilityRole="button">
               <Text style={styles.previewCloseText}>닫기</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isUploadOpen} transparent animationType="fade">
+        <View style={styles.previewOverlay}>
+          <View style={styles.uploadCard}>
+            <Text style={styles.uploadTitle}>독서 기록 업로드</Text>
+            <View style={styles.uploadHeaderRow}>
+              <Text style={styles.uploadLabel}>사진 선택</Text>
+              <View style={styles.uploadActionsRow}>
+                <Pressable onPress={handlePickPhoto} accessibilityRole="button">
+                  <Text style={styles.uploadPickText}>내 사진</Text>
+                </Pressable>
+                <Pressable onPress={handleTakePhoto} accessibilityRole="button">
+                  <Text style={styles.uploadPickText}>직접 촬영</Text>
+                </Pressable>
+              </View>
+            </View>
+            {selectedUploadUri && (
+              <Image source={{ uri: selectedUploadUri }} style={styles.uploadPreview} />
+            )}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {gallery.map((item, index) => {
+                const isActive = selectedUploadImage === item;
+                return (
+                  <Pressable
+                    key={`upload-${index}`}
+                    onPress={() => {
+                      setSelectedUploadImage(item);
+                      setSelectedUploadUri(null);
+                    }}
+                    style={[styles.uploadImageOption, isActive && styles.uploadImageActive]}
+                    accessibilityRole="button">
+                    <Image source={item} style={styles.uploadImage} />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <Text style={styles.uploadLabel}>글 작성</Text>
+            <TextInput
+              value={uploadCaption}
+              onChangeText={setUploadCaption}
+              placeholder="독서 기록을 남겨보세요."
+              placeholderTextColor={Palette.textTertiary}
+              style={styles.uploadInput}
+              multiline
+            />
+            <View style={styles.uploadActions}>
+              <Pressable
+                style={styles.uploadCancel}
+                onPress={() => setIsUploadOpen(false)}
+                accessibilityRole="button">
+                <Text style={styles.uploadCancelText}>취소</Text>
+              </Pressable>
+              <Pressable
+                style={styles.uploadSubmit}
+                onPress={handleUploadFeed}
+                accessibilityRole="button">
+                <Text style={styles.uploadSubmitText}>업로드</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -392,12 +668,10 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Palette.surface,
-    borderWidth: 1,
-    borderColor: Palette.border,
+    backgroundColor: 'transparent',
   },
   backIcon: {
-    fontSize: 20,
+    fontSize: 26,
     color: Palette.textSecondary,
   },
   headerTitle: {
@@ -406,7 +680,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: Palette.textPrimary,
-    marginRight: 36,
   },
   headerSpacer: {
     width: 36,
@@ -562,17 +835,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  feedHeaderRow: {
+    marginBottom: 12,
+  },
   plusButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Palette.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   plusButtonText: {
-    color: Palette.textSecondary,
-    fontSize: 16,
+    color: Palette.textPrimary,
+    fontSize: 20,
   },
   sentenceInputCard: {
     marginTop: 12,
@@ -669,71 +944,81 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Palette.textSecondary,
   },
-  commentCard: {
-    backgroundColor: Palette.surface,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Palette.border,
-    ...Shadows.card,
+  replySection: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Palette.border,
+    paddingTop: 10,
   },
-  commentRow: {
+  replyRow: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: 10,
   },
-  commentAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  replyAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: Palette.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 8,
   },
-  commentAvatarText: {
-    fontSize: 12,
+  replyAvatarText: {
+    fontSize: 11,
     color: Palette.textSecondary,
   },
-  commentBody: {
+  replyBody: {
     flex: 1,
   },
-  commentHeader: {
+  replyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    justifyContent: 'space-between',
   },
-  commentName: {
+  replyName: {
     fontSize: 12,
     fontWeight: '600',
     color: Palette.textPrimary,
-    marginRight: 8,
   },
-  commentTime: {
+  replyTime: {
     fontSize: 10,
     color: Palette.textTertiary,
   },
-  commentText: {
+  replyText: {
+    marginTop: 4,
     fontSize: 12,
     color: Palette.textSecondary,
     lineHeight: 18,
   },
-  commentDivider: {
-    height: 1,
-    backgroundColor: Palette.border,
-    marginTop: 16,
+  replyEmptyText: {
+    fontSize: 12,
+    color: Palette.textTertiary,
+    marginBottom: 10,
   },
-  commentInputRow: {
+  replyInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Palette.background,
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
-  commentInput: {
+  replyInput: {
     flex: 1,
     fontSize: 12,
     color: Palette.textPrimary,
+  },
+  replyToggleButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: Palette.accentSoft,
+  },
+  replyToggleText: {
+    fontSize: 12,
+    color: Palette.accent,
+    fontWeight: '600',
   },
   sendButton: {
     width: 28,
@@ -783,6 +1068,144 @@ const styles = StyleSheet.create({
   galleryAddLabel: {
     fontSize: 11,
     color: Palette.textTertiary,
+  },
+  feedUploadButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: Palette.surface,
+    borderWidth: 1,
+    borderColor: Palette.textPrimary,
+  },
+  feedUploadText: {
+    fontSize: 12,
+    color: Palette.textPrimary,
+    fontWeight: '600',
+  },
+  feedCaption: {
+    marginTop: 12,
+    fontSize: 13,
+    color: Palette.textPrimary,
+    lineHeight: 19,
+  },
+  feedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  likeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Palette.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  likeButtonText: {
+    fontSize: 13,
+    color: Palette.accent,
+  },
+  feedMetaText: {
+    fontSize: 12,
+    color: Palette.textSecondary,
+  },
+  likeButtonTextActive: {
+    color: '#E25555',
+  },
+  feedCommentList: {
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  uploadCard: {
+    width: '100%',
+    borderRadius: 18,
+    backgroundColor: Palette.surface,
+    padding: 16,
+  },
+  uploadTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+    marginBottom: 12,
+  },
+  uploadHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  uploadActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  uploadLabel: {
+    fontSize: 12,
+    color: Palette.textSecondary,
+    marginBottom: 8,
+  },
+  uploadPickText: {
+    fontSize: 12,
+    color: Palette.accent,
+    fontWeight: '600',
+  },
+  uploadPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+    marginBottom: 10,
+  },
+  uploadImageOption: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  uploadImageActive: {
+    borderColor: Palette.accent,
+  },
+  uploadImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  uploadInput: {
+    minHeight: 90,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: Palette.textPrimary,
+    backgroundColor: Palette.background,
+  },
+  uploadActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+  },
+  uploadCancel: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  uploadCancelText: {
+    fontSize: 12,
+    color: Palette.textSecondary,
+  },
+  uploadSubmit: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: Palette.accent,
+  },
+  uploadSubmitText: {
+    fontSize: 12,
+    color: Palette.surface,
+    fontWeight: '600',
   },
   emptyText: {
     marginTop: 12,
