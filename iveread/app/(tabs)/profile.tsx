@@ -14,7 +14,7 @@ import { Palette, Shadows, Typography } from '@/constants/ui';
 import { useProfile } from '@/contexts/profile-context';
 
 const profileSections = [
-  { id: 'profile', title: '프로필', detail: '내 정보 수정 및 공개 범위' },
+  { id: 'profile', title: '프로필', detail: '내 정보 수정' },
   { id: 'friends', title: '친구 목록', detail: '함께 읽는 친구들 보기' },
   { id: 'insights', title: '독서 인사이트', detail: '기록 기반 요약 리포트' },
 ];
@@ -145,7 +145,7 @@ export default function ProfileScreen() {
               style={styles.avatarEditButton}
               onPress={() => setIsEmojiPickerOpen(true)}
               accessibilityRole="button">
-              <Text style={styles.avatarEditIcon}>✏️</Text>
+              <Text style={styles.avatarEditIcon}>✎</Text>
             </Pressable>
           </View>
           <View style={styles.profileInfo}>

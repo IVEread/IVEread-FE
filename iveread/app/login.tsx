@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -7,6 +7,8 @@ import { Palette, Shadows, Typography } from '@/constants/ui';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { height } = useWindowDimensions();
+  const heroHeight = Math.min(Math.floor(height * 0.38), 320);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -14,16 +16,11 @@ export default function LoginScreen() {
         <View style={styles.brandRow}>
           <Image
             source={require('../assets/images/iveread 캐릭터-Photoroom.png')}
-            style={styles.brandImage}
+            style={[styles.brandImage, { height: heroHeight }]}
           />
-          <View>
-            <Text style={styles.brandName}>IVEread</Text>
-            <Text style={styles.brandTagline}>교환독서에 온 걸 환영해요</Text>
-          </View>
         </View>
-        <Text style={styles.eyebrow}>다시 시작하기</Text>
-        <Text style={styles.title}>다시 만나서 반가워요</Text>
-        <Text style={styles.subtitle}>교환독서 기록을 이어가세요.</Text>
+        <Text style={styles.title}>IVEread</Text>
+        <Text style={styles.subtitle}>교환독서에 온 걸 환영해요.</Text>
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
@@ -82,17 +79,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   brandRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 20,
   },
   brandImage: {
-    width: 64,
-    height: 64,
-    marginRight: 14,
+    width: '100%',
     resizeMode: 'contain',
   },
   brandName: {
