@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   },
   brandRow: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
   },
   brandImage: {
     width: '100%',

@@ -5,39 +5,34 @@ import { useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { useCalendarRecords } from '@/contexts/calendar-context';
+import { useFriends } from '@/contexts/friends-context';
 import { useProfile } from '@/contexts/profile-context';
+import { getPersonEmoji } from '@/constants/people';
 
-const baseMembers = [
-  { id: 'jimin', name: '지민', emoji: '🧑‍🎓' },
-  { id: 'sejun', name: '서준', emoji: '👩‍💻' },
-  { id: 'sua', name: '수아', emoji: '🧑‍🎨' },
-  { id: 'minho', name: '민호', emoji: '👨‍🔬' },
-] as const;
-// 추후 백엔드 연동 후 DB 연결
-
-type MemberId = 'me' | (typeof baseMembers)[number]['id'];
-type Member = { id: MemberId; name: string; emoji: string };
+type Member = { id: string; name: string; emoji: string };
 
 export default function CalendarScreen() {
   const router = useRouter();
   const { recordsByOwner, addReaction } = useCalendarRecords();
+  const { friends } = useFriends();
   const { profile } = useProfile();
-  const [selectedMemberId, setSelectedMemberId] = useState<MemberId>('me');
+  const [selectedMemberId, setSelectedMemberId] = useState('me');
   const [currentMonth, setCurrentMonth] = useState(new Date(2026, 0, 1));
   const [selectedDay, setSelectedDay] = useState<number | null>(3);
-  const [reactionFriendIndex, setReactionFriendIndex] = useState(0);
-  const members = useMemo<Member[]>(
-    () => [
+  const members = useMemo<Member[]>(() => {
+    return [
       {
         id: 'me',
         name: '나',
         emoji: profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊'),
       },
-      ...baseMembers,
-    ],
-    [profile.emoji, profile.nickname]
-  );
-  const reactionFriends = useMemo(() => baseMembers, []);
+      ...friends.map((friend) => ({
+        id: friend.email,
+        name: friend.name,
+        emoji: getPersonEmoji(friend.name),
+      })),
+    ];
+  }, [friends, profile.emoji, profile.nickname]);
   const reactionOptions = useMemo(() => ['👏', '😍', '🔥', '✨', '👍', '🥳'], []);
 
   const year = currentMonth.getFullYear();

@@ -12,12 +12,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
-
-const initialFriends = ['명성', '유진', '원영'];
+import { getPersonEmoji } from '@/constants/people';
+import { useFriends } from '@/contexts/friends-context';
 
 export default function FriendsScreen() {
   const router = useRouter();
-  const [friends, setFriends] = useState<string[]>(initialFriends);
+  const { friends, addFriend } = useFriends();
   const [newFriend, setNewFriend] = useState('');
 
   const handleAddFriend = () => {
@@ -26,7 +26,8 @@ export default function FriendsScreen() {
       Alert.alert('안내', '추가할 친구 아이디(이메일)를 입력해 주세요.');
       return;
     }
-    setFriends((prev) => [...prev, trimmed]);
+    const name = trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+    addFriend({ name, email: trimmed });
     setNewFriend('');
   };
 
@@ -67,14 +68,14 @@ export default function FriendsScreen() {
         </View>
 
         <View style={styles.list}>
-          {friends.map((name, index) => (
-            <View key={`${name}-${index}`} style={styles.friendCard}>
+          {friends.map((friend, index) => (
+            <View key={`${friend.email}-${index}`} style={styles.friendCard}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{name.slice(0, 1)}</Text>
+                <Text style={styles.avatarText}>{getPersonEmoji(friend.name)}</Text>
               </View>
               <View>
-                <Text style={styles.friendName}>{name}</Text>
-                <Text style={styles.friendMeta}>함께 읽는 친구</Text>
+                <Text style={styles.friendName}>{friend.name}</Text>
+                <Text style={styles.friendMeta}>{friend.email}</Text>
               </View>
             </View>
           ))}

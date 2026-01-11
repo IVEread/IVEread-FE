@@ -17,6 +17,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
+import { getPersonEmoji } from '@/constants/people';
 import { useProfile } from '@/contexts/profile-context';
 
 const bookDetails = {
@@ -254,6 +255,7 @@ export default function BookDetailScreen() {
   const [selectedWeek, setSelectedWeek] = useState<'current' | 'previous'>('current');
   const { width, height } = useWindowDimensions();
   const myEmoji = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊');
+  const getEmojiForName = (name: string) => getPersonEmoji(name, myEmoji);
   const uploadDateKeys = useMemo(
     () =>
       new Set(
@@ -506,19 +508,19 @@ export default function BookDetailScreen() {
             <View style={styles.memberRow}>
               <View style={styles.memberAvatarStack}>
                 <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>{myEmoji}</Text>
+                  <Text style={styles.memberInitial}>{getEmojiForName('나')}</Text>
                 </View>
                 <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>🧑‍🎓</Text>
+                  <Text style={styles.memberInitial}>{getEmojiForName('지민')}</Text>
                 </View>
                 <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>👩‍💻</Text>
+                  <Text style={styles.memberInitial}>{getEmojiForName('서준')}</Text>
                 </View>
                 <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>🧑‍🎨</Text>
+                  <Text style={styles.memberInitial}>{getEmojiForName('수아')}</Text>
                 </View>
                 <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>👨‍🔬</Text>
+                  <Text style={styles.memberInitial}>{getEmojiForName('민호')}</Text>
                 </View>
               </View>
               <Text style={styles.memberCount}>5명이 함께 읽고 있어요</Text>
@@ -708,7 +710,7 @@ export default function BookDetailScreen() {
                 <View style={styles.sentenceMeta}>
                   <View style={styles.sentenceAvatar}>
                     <Text style={styles.sentenceAvatarText}>
-                      {item.name === '나' ? myEmoji : item.name.slice(0, 1)}
+                      {getEmojiForName(item.name)}
                     </Text>
                   </View>
                   <Text style={styles.sentenceName}>{item.name}</Text>
@@ -719,7 +721,7 @@ export default function BookDetailScreen() {
                       <View key={reply.id} style={styles.replyRow}>
                         <View style={styles.replyAvatar}>
                           <Text style={styles.replyAvatarText}>
-                            {reply.name === '나' ? myEmoji : reply.name.slice(0, 1)}
+                            {getEmojiForName(reply.name)}
                           </Text>
                         </View>
                         <View style={styles.replyBody}>
@@ -804,7 +806,7 @@ export default function BookDetailScreen() {
                 <View style={styles.previewHeaderRow}>
                   <View style={styles.previewUserAvatar}>
                     <Text style={styles.previewUserInitial}>
-                      {selectedPost.name === '나' ? myEmoji : selectedPost.name.slice(0, 1)}
+                      {getEmojiForName(selectedPost.name)}
                     </Text>
                   </View>
                   <View style={styles.previewUserMeta}>
@@ -845,7 +847,7 @@ export default function BookDetailScreen() {
                         <View key={comment.id} style={styles.replyRow}>
                           <View style={styles.replyAvatar}>
                             <Text style={styles.replyAvatarText}>
-                              {comment.name === '나' ? myEmoji : comment.name.slice(0, 1)}
+                              {getEmojiForName(comment.name)}
                             </Text>
                           </View>
                           <View style={styles.replyBody}>
