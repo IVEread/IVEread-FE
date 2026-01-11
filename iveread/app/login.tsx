@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -11,6 +11,16 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
+        <View style={styles.brandRow}>
+          <Image
+            source={require('../assets/images/iveread 캐릭터-Photoroom.png')}
+            style={styles.brandImage}
+          />
+          <View>
+            <Text style={styles.brandName}>IVEread</Text>
+            <Text style={styles.brandTagline}>교환독서에 온 걸 환영해요</Text>
+          </View>
+        </View>
         <Text style={styles.eyebrow}>다시 시작하기</Text>
         <Text style={styles.title}>다시 만나서 반가워요</Text>
         <Text style={styles.subtitle}>교환독서 기록을 이어가세요.</Text>
@@ -73,6 +83,27 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     justifyContent: 'center',
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  brandImage: {
+    width: 64,
+    height: 64,
+    marginRight: 14,
+    resizeMode: 'contain',
+  },
+  brandName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+  },
+  brandTagline: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Palette.textSecondary,
   },
   eyebrow: {
     fontSize: 12,

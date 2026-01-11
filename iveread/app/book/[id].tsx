@@ -10,6 +10,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type DimensionValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -23,43 +24,36 @@ const bookDetails = {
     title: '1984',
     author: '조지 오웰',
     tag: '고전 소설',
-    progress: 0.67,
   },
   sapiens: {
     title: '사피엔스',
     author: '유발 하라리',
     tag: '인문학',
-    progress: 0.42,
   },
   gatsby: {
     title: '위대한 개츠비',
     author: 'F. 스콧 피츠제럴드',
     tag: '미국 문학',
-    progress: 0.8,
   },
   demian: {
     title: '데미안',
     author: '헤르만 헤세',
     tag: '성장 소설',
-    progress: 1,
   },
   bird: {
     title: '어린왕자',
     author: '앙투안 드 생텍쥐페리',
     tag: '우화',
-    progress: 1,
   },
   death: {
     title: '총, 균, 쇠',
     author: '재레드 다이아몬드',
     tag: '문명사',
-    progress: 1,
   },
   cosmos: {
     title: '코스모스',
     author: '칼 세이건',
     tag: '과학',
-    progress: 1,
   },
 } as const;
 
@@ -99,6 +93,39 @@ const gallerySeed = [
   require('../../assets/images/splash-icon.png'),
 ];
 
+const dayKeyOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+
+const getWeekStart = (baseDate: Date) => {
+  const date = new Date(baseDate);
+  const day = date.getDay();
+  const diff = (day + 6) % 7;
+  date.setDate(date.getDate() - diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getWeekDateKeys = (baseDate: Date) => {
+  const start = getWeekStart(baseDate);
+  return dayKeyOrder.map((key, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return { key, dateKey: formatDateKey(date) };
+  });
+};
+
+const getDateKeyOffset = (offset: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + offset);
+  return formatDateKey(date);
+};
+
 const feedSeed = [
   {
     id: 'feed-1',
@@ -108,6 +135,7 @@ const feedSeed = [
     caption: '오늘은 3장까지 읽고 핵심 문장을 정리했어요.',
     likes: 4,
     comments: [{ id: 'fc-1', name: '서준', time: '2시간 전', text: '문장 공유해줘!' }],
+    createdAt: getDateKeyOffset(-3),
   },
   {
     id: 'feed-2',
@@ -117,6 +145,7 @@ const feedSeed = [
     caption: '모임 전에 밑줄친 문장 다시 읽기.',
     likes: 2,
     comments: [],
+    createdAt: getDateKeyOffset(-2),
   },
   {
     id: 'feed-3',
@@ -126,6 +155,7 @@ const feedSeed = [
     caption: '오늘 기록 완료. 다음 주는 4장까지!',
     likes: 6,
     comments: [{ id: 'fc-2', name: '지민', time: '방금', text: '고생했어!' }],
+    createdAt: getDateKeyOffset(-1),
   },
   {
     id: 'feed-4',
@@ -135,8 +165,68 @@ const feedSeed = [
     caption: '독서 인증샷 📚',
     likes: 1,
     comments: [],
+    createdAt: getDateKeyOffset(0),
   },
 ];
+
+const weeklyStampConfig = [
+  {
+    id: 'mon',
+    day: '월',
+    icon: '📗',
+    border: '#9FC57C',
+    fill: '#E7F3D7',
+    shape: 'square',
+  },
+  {
+    id: 'tue',
+    day: '화',
+    icon: '📘',
+    border: '#8FB6D4',
+    fill: '#E1EEF7',
+    shape: 'square',
+  },
+  {
+    id: 'wed',
+    day: '수',
+    icon: '📙',
+    border: '#E2A458',
+    fill: '#F9E8D0',
+    shape: 'round',
+  },
+  {
+    id: 'thu',
+    day: '목',
+    icon: '📖',
+    border: '#E07C4F',
+    fill: '#F7E0D4',
+    shape: 'round',
+  },
+  {
+    id: 'fri',
+    day: '금',
+    icon: '📘',
+    border: '#5B9BD5',
+    fill: '#DCEBFA',
+    shape: 'round',
+  },
+  {
+    id: 'sat',
+    day: '토',
+    icon: '📓',
+    border: '#C9A6E3',
+    fill: '#EFE3F7',
+    shape: 'square',
+  },
+  {
+    id: 'sun',
+    day: '일',
+    icon: '📔',
+    border: '#D88FA0',
+    fill: '#F7DEE3',
+    shape: 'square',
+  },
+] as const;
 
 export default function BookDetailScreen() {
   const router = useRouter();
@@ -161,8 +251,64 @@ export default function BookDetailScreen() {
   const [selectedUploadUri, setSelectedUploadUri] = useState<string | null>(null);
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [feedCommentText, setFeedCommentText] = useState('');
+  const [selectedWeek, setSelectedWeek] = useState<'current' | 'previous'>('current');
   const { width, height } = useWindowDimensions();
   const myEmoji = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊');
+  const uploadDateKeys = useMemo(
+    () =>
+      new Set(
+        feedItems
+          .map((item) => item.createdAt)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    [feedItems],
+  );
+  const baseWeekDate = useMemo(() => {
+    const date = new Date();
+    if (selectedWeek === 'previous') {
+      date.setDate(date.getDate() - 7);
+    }
+    return date;
+  }, [selectedWeek]);
+  const weekDateKeys = useMemo(() => getWeekDateKeys(baseWeekDate), [baseWeekDate]);
+  const todayKey = useMemo(() => formatDateKey(new Date()), []);
+  const weeklyStamps = useMemo(
+    () =>
+      weeklyStampConfig.map((stamp, index) => {
+        const weekDateKey = weekDateKeys[index]?.dateKey;
+        return {
+          ...stamp,
+          isChecked: weekDateKey ? uploadDateKeys.has(weekDateKey) : false,
+          isToday: weekDateKey === todayKey,
+        };
+      }),
+    [uploadDateKeys, weekDateKeys, todayKey],
+  );
+  const completedStampCount = weeklyStamps.filter((stamp) => stamp.isChecked).length;
+  const streakCount = useMemo(() => {
+    let count = 0;
+    const weekStart = getWeekStart(baseWeekDate);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(0, 0, 0, 0);
+    const date = new Date(selectedWeek === 'current' ? new Date() : weekEnd);
+    date.setHours(0, 0, 0, 0);
+    while (date >= weekStart) {
+      const key = formatDateKey(date);
+      if (!uploadDateKeys.has(key)) {
+        break;
+      }
+      count += 1;
+      date.setDate(date.getDate() - 1);
+    }
+    return count;
+  }, [baseWeekDate, selectedWeek, uploadDateKeys]);
+  const stampTopRow = weeklyStamps.slice(0, 3);
+  const stampBottomRow = weeklyStamps.slice(3);
+  const stampTopPositions: DimensionValue[] = ['25%', '50%', '75%'];
+  const stampBottomPositions: DimensionValue[] = ['12.5%', '37.5%', '62.5%', '87.5%'];
+  const stampItemWidth = 64;
+  const stampRowOffset = 80;
 
   const gallery = useMemo(() => gallerySeed, []);
   const selectedPost = useMemo(
@@ -228,6 +374,7 @@ export default function BookDetailScreen() {
         caption: uploadCaption.trim(),
         likes: 0,
         comments: [],
+        createdAt: formatDateKey(new Date()),
       },
       ...prev,
     ]);
@@ -380,16 +527,134 @@ export default function BookDetailScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>독서 진행률</Text>
-          <View style={styles.progressCard}>
-            <View style={styles.progressHeader}>
-              <Text style={styles.progressLabel}>현재 진행률</Text>
-              <Text style={styles.progressValue}>{Math.round(detail.progress * 100)}%</Text>
+          <Text style={styles.sectionTitle}>일주일 출석 스탬프</Text>
+          <View style={styles.stampCard}>
+            <View style={styles.stampHeader}>
+              <Text style={styles.stampTitle}>
+                {selectedWeek === 'current'
+                  ? `이번 주 ${completedStampCount}일 출석`
+                  : `지난 주 ${completedStampCount}일 출석`}
+              </Text>
             </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${detail.progress * 100}%` }]} />
+            <View style={styles.stampControlRow}>
+              <View style={styles.weekToggle}>
+                <Pressable
+                  onPress={() => setSelectedWeek('current')}
+                  style={[
+                    styles.weekToggleButton,
+                    selectedWeek === 'current' && styles.weekToggleButtonActive,
+                  ]}
+                  accessibilityRole="button">
+                  <Text
+                    style={[
+                      styles.weekToggleText,
+                      selectedWeek === 'current' && styles.weekToggleTextActive,
+                    ]}>
+                    이번 주
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setSelectedWeek('previous')}
+                  style={[
+                    styles.weekToggleButton,
+                    selectedWeek === 'previous' && styles.weekToggleButtonActive,
+                  ]}
+                  accessibilityRole="button">
+                  <Text
+                    style={[
+                      styles.weekToggleText,
+                      selectedWeek === 'previous' && styles.weekToggleTextActive,
+                    ]}>
+                    지난 주
+                  </Text>
+                </Pressable>
+              </View>
+              <View style={styles.streakBadge}>
+                <Text style={styles.streakLabel}>연속</Text>
+                <Text style={styles.streakValue}>{streakCount}일</Text>
+              </View>
             </View>
-            <Text style={styles.progressNote}>5명 중 3명이 기록을 완료했어요.</Text>
+            <View style={styles.stampLayout}>
+              {stampTopRow.map((stamp, index) => {
+                const isSquare = stamp.shape === 'square';
+                return (
+                  <View
+                    key={stamp.id}
+                    style={[
+                      styles.stampItemAbsolute,
+                      {
+                        left: stampTopPositions[index],
+                        top: 0,
+                        width: stampItemWidth,
+                        transform: [{ translateX: -stampItemWidth / 2 }],
+                      },
+                    ]}>
+                    <View
+                      style={[
+                        styles.stampBadge,
+                        isSquare ? styles.stampBadgeSquare : styles.stampBadgeRound,
+                        {
+                          borderColor: stamp.border,
+                          backgroundColor: stamp.isChecked ? stamp.fill : Palette.surface,
+                        },
+                        stamp.isChecked ? styles.stampBadgeActive : styles.stampBadgeInactive,
+                        stamp.isToday && styles.stampBadgeToday,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stampIcon,
+                          stamp.isChecked ? styles.stampIconActive : styles.stampIconInactive,
+                        ]}>
+                        {stamp.icon}
+                      </Text>
+                    </View>
+                    <Text style={[styles.stampDay, stamp.isToday && styles.stampDayToday]}>
+                      {stamp.day}
+                    </Text>
+                  </View>
+                );
+              })}
+              {stampBottomRow.map((stamp, index) => {
+                const isSquare = stamp.shape === 'square';
+                return (
+                  <View
+                    key={stamp.id}
+                    style={[
+                      styles.stampItemAbsolute,
+                      {
+                        left: stampBottomPositions[index],
+                        top: stampRowOffset,
+                        width: stampItemWidth,
+                        transform: [{ translateX: -stampItemWidth / 2 }],
+                      },
+                    ]}>
+                    <View
+                      style={[
+                        styles.stampBadge,
+                        isSquare ? styles.stampBadgeSquare : styles.stampBadgeRound,
+                        {
+                          borderColor: stamp.border,
+                          backgroundColor: stamp.isChecked ? stamp.fill : Palette.surface,
+                        },
+                        stamp.isChecked ? styles.stampBadgeActive : styles.stampBadgeInactive,
+                        stamp.isToday && styles.stampBadgeToday,
+                      ]}>
+                      <Text
+                        style={[
+                          styles.stampIcon,
+                          stamp.isChecked ? styles.stampIconActive : styles.stampIconInactive,
+                        ]}>
+                        {stamp.icon}
+                      </Text>
+                    </View>
+                    <Text style={[styles.stampDay, stamp.isToday && styles.stampDayToday]}>
+                      {stamp.day}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={styles.stampNote}>오늘 스탬프를 찍으면 연속 기록이 이어져요.</Text>
           </View>
         </View>
 
@@ -831,7 +1096,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Palette.textSecondary,
   },
-  progressCard: {
+  stampCard: {
     backgroundColor: Palette.surface,
     borderRadius: 18,
     padding: 16,
@@ -839,34 +1104,120 @@ const styles = StyleSheet.create({
     borderColor: Palette.border,
     ...Shadows.card,
   },
-  progressHeader: {
+  stampHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'flex-start',
     marginBottom: 12,
   },
-  progressLabel: {
-    fontSize: 12,
-    color: Palette.textSecondary,
+  stampTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Palette.textPrimary,
   },
-  progressValue: {
-    fontSize: 14,
+  stampControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  weekToggle: {
+    flexDirection: 'row',
+    backgroundColor: Palette.background,
+    borderRadius: 999,
+    padding: 4,
+  },
+  weekToggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  weekToggleButtonActive: {
+    backgroundColor: Palette.surface,
+    ...Shadows.card,
+  },
+  weekToggleText: {
+    fontSize: 11,
+    color: Palette.textSecondary,
+    fontWeight: '600',
+  },
+  weekToggleTextActive: {
+    color: Palette.textPrimary,
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: Palette.accentSoft,
+  },
+  streakLabel: {
+    fontSize: 11,
+    color: Palette.textSecondary,
+    marginRight: 6,
+  },
+  streakValue: {
+    fontSize: 12,
     fontWeight: '700',
     color: Palette.accent,
   },
-  progressTrack: {
-    height: 6,
-    backgroundColor: Palette.accentSoft,
-    borderRadius: 999,
-    overflow: 'hidden',
+  stampLayout: {
+    position: 'relative',
+    height: 160,
+    marginBottom: 8,
   },
-  progressFill: {
-    height: 6,
-    backgroundColor: Palette.accent,
-    borderRadius: 999,
+  stampItemAbsolute: {
+    position: 'absolute',
+    alignItems: 'center',
   },
-  progressNote: {
-    marginTop: 10,
+  stampBadge: {
+    width: 54,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+  },
+  stampBadgeRound: {
+    borderRadius: 27,
+  },
+  stampBadgeSquare: {
+    borderRadius: 16,
+  },
+  stampBadgeActive: {
+    opacity: 1,
+  },
+  stampBadgeInactive: {
+    opacity: 0.5,
+  },
+  stampBadgeToday: {
+    borderColor: Palette.accent,
+    shadowColor: Palette.accent,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  stampIcon: {
+    fontSize: 22,
+  },
+  stampIconActive: {
+    opacity: 1,
+  },
+  stampIconInactive: {
+    opacity: 0.6,
+  },
+  stampDay: {
+    marginTop: 6,
+    fontSize: 11,
+    color: Palette.textSecondary,
+  },
+  stampDayToday: {
+    color: Palette.accent,
+    fontWeight: '600',
+  },
+  stampNote: {
+    marginTop: 6,
     fontSize: 11,
     color: Palette.textTertiary,
   },
