@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +20,7 @@ export default function FriendsScreen() {
   const router = useRouter();
   const { friends, addFriend } = useFriends();
   const [newFriend, setNewFriend] = useState('');
+  const friendsIllustration = require('../assets/images/image-Photoroom 3.png');
 
   const handleAddFriend = () => {
     const trimmed = newFriend.trim().toLowerCase();
@@ -65,6 +67,10 @@ export default function FriendsScreen() {
               <Text style={styles.addActionText}>추가</Text>
             </Pressable>
           </View>
+        </View>
+
+        <View style={styles.illustrationCard}>
+          <Image source={friendsIllustration} style={styles.illustrationImage} />
         </View>
 
         <View style={styles.list}>
@@ -160,6 +166,20 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: 12,
+  },
+  illustrationCard: {
+    marginBottom: 18,
+    borderRadius: 18,
+    backgroundColor: Palette.surface,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    padding: 10,
+  },
+  illustrationImage: {
+    width: '100%',
+    height: 150,
+    resizeMode: 'contain',
+    borderRadius: 14,
   },
   friendCard: {
     flexDirection: 'row',

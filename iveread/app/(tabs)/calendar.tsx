@@ -68,6 +68,7 @@ export default function CalendarScreen() {
     const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}-`;
     return Object.keys(recordsForMember).filter((key) => key.startsWith(monthPrefix)).length;
   }, [recordsForMember, year, monthIndex]);
+  const calendarIllustration = require('../../assets/images/image-Photoroom 2.png');
 
   const uniqueBookCount = useMemo(() => {
     const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}-`;
@@ -210,6 +211,10 @@ export default function CalendarScreen() {
               </Pressable>
             );
           })}
+        </View>
+
+        <View style={styles.illustrationCard}>
+          <Image source={calendarIllustration} style={styles.illustrationImage} />
         </View>
 
         <View style={styles.detailCard}>
@@ -405,6 +410,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingBottom: 12,
+  },
+  illustrationCard: {
+    marginTop: 6,
+    marginBottom: 16,
+    borderRadius: 18,
+    backgroundColor: Palette.surface,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    padding: 10,
+  },
+  illustrationImage: {
+    width: '100%',
+    height: 160,
+    resizeMode: 'contain',
+    borderRadius: 14,
   },
   dayCell: {
     width: '14.28%',

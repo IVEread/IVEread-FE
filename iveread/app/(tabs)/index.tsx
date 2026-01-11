@@ -39,6 +39,7 @@ export default function HomeScreen() {
   const [selectedTag, setSelectedTag] = useState('전체');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { clubs } = useReadingClubs();
+  const heroIllustration = require('../../assets/images/image-Photoroom 1.png');
 
   const tagOptions = useMemo(() => {
     const tagSet = new Set<string>();
@@ -85,6 +86,8 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.subtitle}>내가 읽은 것, 우리가 읽은 것</Text>
         </View>
+
+        <Image source={heroIllustration} style={styles.heroIllustration} />
 
         {isSearchOpen && (
           <View style={styles.section}>
@@ -193,6 +196,13 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 14,
+  },
+  heroIllustration: {
+    width: '100%',
+    height: 170,
+    borderRadius: 18,
+    marginBottom: 18,
+    resizeMode: 'contain',
   },
   headerTopRow: {
     flexDirection: 'row',

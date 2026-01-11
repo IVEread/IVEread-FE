@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -28,6 +28,7 @@ export default function CreateGroupScreen() {
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [isMemberPickerOpen, setIsMemberPickerOpen] = useState(false);
+  const groupIllustration = require('../assets/images/image-Photoroom 4.png');
 
   const daysInMonth = useMemo(() => {
     return new Date(selectedYear, selectedMonth, 0).getDate();
@@ -100,6 +101,7 @@ export default function CreateGroupScreen() {
         </View>
 
         <View style={styles.card}>
+          <Image source={groupIllustration} style={styles.illustrationImage} />
           <Text style={styles.title}>교환독서 만들기</Text>
           <Text style={styles.description}>필수 정보를 입력하면 그룹 미리보기와 초대 링크가 준비돼요.</Text>
 
@@ -330,6 +332,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Palette.border,
     ...Shadows.card,
+  },
+  illustrationImage: {
+    width: '100%',
+    height: 170,
+    resizeMode: 'contain',
+    borderRadius: 16,
+    marginBottom: 12,
+    alignSelf: 'center',
   },
   title: {
     ...Typography.sectionTitle,
