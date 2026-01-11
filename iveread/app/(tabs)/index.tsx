@@ -149,12 +149,6 @@ export default function HomeScreen() {
                       </View>
                     ))}
                   </View>
-                  <View style={styles.progressRow}>
-                    <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${club.progress * 100}%` }]} />
-                    </View>
-                    <Text style={styles.progressText}>{club.members}</Text>
-                  </View>
                 </View>
               </Pressable>
             </Link>
@@ -367,25 +361,6 @@ const styles = StyleSheet.create({
   cardTagText: {
     fontSize: 11,
     color: Palette.accent,
-  },
-  progressRow: {
-    marginTop: 12,
-  },
-  progressTrack: {
-    height: 5,
-    backgroundColor: Palette.border,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 5,
-    backgroundColor: Palette.accent,
-    borderRadius: 999,
-  },
-  progressText: {
-    ...Typography.caption,
-    marginTop: 8,
-    color: Palette.textSecondary,
   },
   completedRow: {
     paddingRight: 6,
