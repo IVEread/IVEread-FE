@@ -10,7 +10,7 @@ import { ProfileProvider } from '@/contexts/profile-context';
 import { ReadingClubsProvider } from '@/contexts/reading-clubs-context';
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  initialRouteName: 'login',
 };
 
 export default function RootLayout() {
@@ -22,7 +22,7 @@ export default function RootLayout() {
         <ReadingClubsProvider>
           <FriendsProvider>
             <ProfileProvider>
-              <Stack>
+              <Stack initialRouteName="login">
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="login" options={{ headerShown: false }} />
                 <Stack.Screen name="profile-edit" options={{ headerShown: false }} />
