@@ -28,7 +28,7 @@ export default function CreateGroupScreen() {
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [isMemberPickerOpen, setIsMemberPickerOpen] = useState(false);
-  const groupIllustration = require('../assets/images/image-Photoroom 4.png');
+  const groupIllustration = require('../assets/images/image-Photoroom4.png');
 
   const daysInMonth = useMemo(() => {
     return new Date(selectedYear, selectedMonth, 0).getDate();

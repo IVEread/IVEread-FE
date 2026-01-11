@@ -39,7 +39,7 @@ export default function HomeScreen() {
   const [selectedTag, setSelectedTag] = useState('전체');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const { clubs } = useReadingClubs();
-  const heroIllustration = require('../../assets/images/image-Photoroom 1.png');
+  const heroIllustration = require('../../assets/images/image-Photoroom1.png');
 
   const tagOptions = useMemo(() => {
     const tagSet = new Set<string>();

@@ -15,7 +15,7 @@ export default function LoginScreen() {
       <View style={styles.container}>
         <View style={styles.brandRow}>
           <Image
-            source={require('../assets/images/iveread 캐릭터-Photoroom.png')}
+            source={require('../assets/images/iveread-people-Photoroom.png')}
             style={[styles.brandImage, { height: heroHeight }]}
           />
         </View>

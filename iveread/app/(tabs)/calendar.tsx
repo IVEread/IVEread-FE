@@ -68,7 +68,7 @@ export default function CalendarScreen() {
     const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}-`;
     return Object.keys(recordsForMember).filter((key) => key.startsWith(monthPrefix)).length;
   }, [recordsForMember, year, monthIndex]);
-  const calendarIllustration = require('../../assets/images/image-Photoroom 2.png');
+  const calendarIllustration = require('../../assets/images/image-Photoroom2.png');
 
   const uniqueBookCount = useMemo(() => {
     const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}-`;

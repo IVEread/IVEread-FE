@@ -20,7 +20,7 @@ export default function FriendsScreen() {
   const router = useRouter();
   const { friends, addFriend } = useFriends();
   const [newFriend, setNewFriend] = useState('');
-  const friendsIllustration = require('../assets/images/image-Photoroom 3.png');
+  const friendsIllustration = require('../assets/images/image-Photoroom3.png');
 
   const handleAddFriend = () => {
     const trimmed = newFriend.trim().toLowerCase();
