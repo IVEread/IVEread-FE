@@ -1,6 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -38,6 +50,7 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('전체');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const { clubs } = useReadingClubs();
   const heroIllustration = require('../../assets/images/image-Photoroom1.png');
 
@@ -59,10 +72,23 @@ export default function HomeScreen() {
     });
     return filtered;
   }, [searchQuery, selectedTag]);
+  const contentContainerStyle = useMemo(
+    () => [styles.container, { paddingBottom: 140 + insets.bottom }],
+    [insets.bottom],
+  );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={insets.top}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <SafeAreaView style={styles.safeArea}>
+          <ScrollView
+            contentContainerStyle={contentContainerStyle}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerTopRow}>
             <Text style={styles.title}>I&apos;ve Read</Text>
@@ -174,13 +200,19 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+          </ScrollView>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
+    flex: 1,
+    backgroundColor: Palette.background,
+  },
+  keyboardAvoidingView: {
     flex: 1,
     backgroundColor: Palette.background,
   },

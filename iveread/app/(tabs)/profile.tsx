@@ -11,6 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
+import { useCalendarRecords } from '@/contexts/calendar-context';
+import { useFriends } from '@/contexts/friends-context';
 import { useProfile } from '@/contexts/profile-context';
 
 const profileSections = [
@@ -22,8 +24,21 @@ const profileSections = [
 export default function ProfileScreen() {
   const router = useRouter();
   const { profile, updateProfile } = useProfile();
+  const { recordsByOwner } = useCalendarRecords();
+  const { friends } = useFriends();
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const avatarLabel = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '?');
+  const myRecords = recordsByOwner.me ?? {};
+  const recordCount = useMemo(() => Object.keys(myRecords).length, [myRecords]);
+  const completedCount = useMemo(() => {
+    const titles = new Set(
+      Object.values(myRecords)
+        .map((record) => record.title)
+        .filter(Boolean)
+    );
+    return titles.size;
+  }, [myRecords]);
+  const friendCount = friends.length;
 
   const emojiCategories = useMemo(
     () => [
@@ -153,15 +168,15 @@ export default function ProfileScreen() {
             <Text style={styles.profileMeta}>오늘도 한 페이지, 꾸준한 독서 중</Text>
             <View style={styles.profileStats}>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>18</Text>
-                <Text style={styles.statLabel}>기록</Text>
+                <Text style={styles.statNumber}>{recordCount}</Text>
+                <Text style={styles.statLabel}>진행중</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>6</Text>
+                <Text style={styles.statNumber}>{completedCount}</Text>
                 <Text style={styles.statLabel}>완독</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>5</Text>
+                <Text style={styles.statNumber}>{friendCount}</Text>
                 <Text style={styles.statLabel}>친구</Text>
               </View>
             </View>

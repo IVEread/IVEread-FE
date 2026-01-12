@@ -2,15 +2,19 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
@@ -26,6 +30,7 @@ const bookOptions = [
 export default function AddRecordScreen() {
   const router = useRouter();
   const { date, ownerId } = useLocalSearchParams<{ date?: string; ownerId?: string }>();
+  const insets = useSafeAreaInsets();
   const { addRecord } = useCalendarRecords();
   const initialDate = useMemo(() => {
     if (!date) return null;
@@ -45,6 +50,10 @@ export default function AddRecordScreen() {
   const [isBookPickerOpen, setIsBookPickerOpen] = useState(false);
   const [selectedBook, setSelectedBook] = useState<(typeof bookOptions)[number] | null>(null);
   const [note, setNote] = useState('');
+  const contentContainerStyle = useMemo(
+    () => [styles.container, { paddingBottom: 160 + insets.bottom }],
+    [insets.bottom],
+  );
 
   const daysInMonth = useMemo(() => {
     return new Date(selectedYear, selectedMonth, 0).getDate();
@@ -85,9 +94,18 @@ export default function AddRecordScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={insets.top}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <SafeAreaView style={styles.safeArea}>
+          <Stack.Screen options={{ headerShown: false }} />
+          <ScrollView
+            contentContainerStyle={contentContainerStyle}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => router.back()}
@@ -253,12 +271,18 @@ export default function AddRecordScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </SafeAreaView>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
+    flex: 1,
+    backgroundColor: Palette.background,
+  },
+  keyboardAvoidingView: {
     flex: 1,
     backgroundColor: Palette.background,
   },

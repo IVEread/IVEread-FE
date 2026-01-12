@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
@@ -19,8 +23,13 @@ import { useFriends } from '@/contexts/friends-context';
 export default function FriendsScreen() {
   const router = useRouter();
   const { friends, addFriend } = useFriends();
+  const insets = useSafeAreaInsets();
   const [newFriend, setNewFriend] = useState('');
   const friendsIllustration = require('../assets/images/image-Photoroom3.png');
+  const contentContainerStyle = useMemo(
+    () => [styles.container, { paddingBottom: 160 + insets.bottom }],
+    [insets.bottom],
+  );
 
   const handleAddFriend = () => {
     const trimmed = newFriend.trim().toLowerCase();
@@ -34,9 +43,18 @@ export default function FriendsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={insets.top}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <SafeAreaView style={styles.safeArea}>
+          <Stack.Screen options={{ headerShown: false }} />
+          <ScrollView
+            contentContainerStyle={contentContainerStyle}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Pressable
             onPress={() => router.back()}
@@ -86,13 +104,19 @@ export default function FriendsScreen() {
             </View>
           ))}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+          </ScrollView>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
+    flex: 1,
+    backgroundColor: Palette.background,
+  },
+  keyboardAvoidingView: {
     flex: 1,
     backgroundColor: Palette.background,
   },

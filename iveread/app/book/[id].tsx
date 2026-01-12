@@ -2,17 +2,22 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   useWindowDimensions,
   View,
   type DimensionValue,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -236,13 +241,13 @@ export default function BookDetailScreen() {
   const defaultId: BookId = '1984';
   const bookId = (id && id in bookDetails ? (id as BookId) : defaultId);
   const detail = bookDetails[bookId];
-  const [sentences, setSentences] = useState(highlightSentencesSeed);
+  const [sentences, setSentences] = useState<typeof highlightSentencesSeed>(highlightSentencesSeed);
   const [isAddingSentence, setIsAddingSentence] = useState(false);
   const [sentenceText, setSentenceText] = useState('');
   const [sentencePage, setSentencePage] = useState('');
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
   const [openReplyId, setOpenReplyId] = useState<string | null>(null);
-  const [feedItems, setFeedItems] = useState(feedSeed);
+  const [feedItems, setFeedItems] = useState<typeof feedSeed>(feedSeed);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadCaption, setUploadCaption] = useState('');
@@ -254,8 +259,11 @@ export default function BookDetailScreen() {
   const [feedCommentText, setFeedCommentText] = useState('');
   const [selectedWeek, setSelectedWeek] = useState<'current' | 'previous'>('current');
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const myEmoji = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊');
   const getEmojiForName = (name: string) => getPersonEmoji(name, myEmoji);
+  const galleryCardSize = Math.floor((width - 22 * 2 - 14) / 2);
+  const previewImageHeight = Math.min(Math.floor(width * 1.35), Math.floor(height * 0.68));
   const uploadDateKeys = useMemo(
     () =>
       new Set(
@@ -312,14 +320,6 @@ export default function BookDetailScreen() {
   const stampItemWidth = 64;
   const stampRowOffset = 80;
 
-  const gallery = useMemo(() => gallerySeed, []);
-  const selectedPost = useMemo(
-    () => (selectedPostId ? feedItems.find((item) => item.id === selectedPostId) ?? null : null),
-    [feedItems, selectedPostId],
-  );
-  const galleryCardSize = Math.floor((width - 22 * 2 - 14) / 2);
-  const previewImageHeight = Math.min(Math.floor(width * 1.35), Math.floor(height * 0.68));
-
   const handleAddSentence = () => {
     if (!sentenceText.trim()) {
       Alert.alert('안내', '문장을 입력해 주세요.');
@@ -357,6 +357,404 @@ export default function BookDetailScreen() {
     setReplyInputs((prev) => ({ ...prev, [sentenceId]: '' }));
     setOpenReplyId(null);
   };
+  const contentContainerStyle = useMemo(
+    () => [styles.container, { paddingBottom: 160 + insets.bottom }],
+    [insets.bottom],
+  );
+  const sections = useMemo(
+    () => ['header', 'info', 'stamps', 'sentences', 'feed'] as const,
+    [],
+  );
+  const renderSection = useMemo(
+    () =>
+      ({ item }: { item: (typeof sections)[number] }) => {
+        if (item === 'header') {
+          return (
+            <>
+              <View style={styles.headerRow}>
+                <Pressable onPress={() => router.back()} style={styles.backButton}>
+                  <Text style={styles.backIcon}>‹</Text>
+                </Pressable>
+                <Text style={styles.headerTitle}>교환독서 상세 페이지</Text>
+                <View style={styles.headerSpacer} />
+              </View>
+
+              <View style={styles.bookCard}>
+                <View style={styles.bookCover}>
+                  <Text style={styles.bookCoverText}>표지</Text>
+                </View>
+                <View style={styles.bookInfo}>
+                  <View style={styles.bookTitleRow}>
+                    <Text style={styles.bookTitle}>{detail.title}</Text>
+                    <View style={styles.bookTagInline}>
+                      <Text style={styles.bookTagText}>{detail.tag}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.bookAuthor}>{detail.author}</Text>
+                </View>
+              </View>
+            </>
+          );
+        }
+
+        if (item === 'info') {
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>교환독서 정보</Text>
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>시작일</Text>
+                  <Text style={styles.infoValue}>2024.01.03 시작</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>목표일</Text>
+                  <Text style={styles.infoValue}>2024.02.15 까지</Text>
+                </View>
+                <View style={styles.memberRow}>
+                  <View style={styles.memberAvatarStack}>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberInitial}>{getEmojiForName('나')}</Text>
+                    </View>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberInitial}>{getEmojiForName('지민')}</Text>
+                    </View>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberInitial}>{getEmojiForName('서준')}</Text>
+                    </View>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberInitial}>{getEmojiForName('수아')}</Text>
+                    </View>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberInitial}>{getEmojiForName('민호')}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.memberCount}>5명이 함께 읽고 있어요</Text>
+                </View>
+              </View>
+            </View>
+          );
+        }
+
+        if (item === 'stamps') {
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>일주일 출석 스탬프</Text>
+              <View style={styles.stampCard}>
+                <View style={styles.stampHeader}>
+                  <Text style={styles.stampTitle}>
+                    {selectedWeek === 'current'
+                      ? `이번 주 ${completedStampCount}일 출석`
+                      : `지난 주 ${completedStampCount}일 출석`}
+                  </Text>
+                </View>
+                <View style={styles.stampControlRow}>
+                  <View style={styles.weekToggle}>
+                    <Pressable
+                      onPress={() => setSelectedWeek('current')}
+                      style={[
+                        styles.weekToggleButton,
+                        selectedWeek === 'current' && styles.weekToggleButtonActive,
+                      ]}
+                      accessibilityRole="button">
+                      <Text
+                        style={[
+                          styles.weekToggleText,
+                          selectedWeek === 'current' && styles.weekToggleTextActive,
+                        ]}>
+                        이번 주
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setSelectedWeek('previous')}
+                      style={[
+                        styles.weekToggleButton,
+                        selectedWeek === 'previous' && styles.weekToggleButtonActive,
+                      ]}
+                      accessibilityRole="button">
+                      <Text
+                        style={[
+                          styles.weekToggleText,
+                          selectedWeek === 'previous' && styles.weekToggleTextActive,
+                        ]}>
+                        지난 주
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.streakBadge}>
+                    <Text style={styles.streakLabel}>연속</Text>
+                    <Text style={styles.streakValue}>{streakCount}일</Text>
+                  </View>
+                </View>
+                <View style={styles.stampLayout}>
+                  {stampTopRow.map((stamp, index) => {
+                    const isSquare = stamp.shape === 'square';
+                    return (
+                      <View
+                        key={stamp.id}
+                        style={[
+                          styles.stampItemAbsolute,
+                          {
+                            left: stampTopPositions[index],
+                            top: 0,
+                            width: stampItemWidth,
+                            transform: [{ translateX: -stampItemWidth / 2 }],
+                          },
+                        ]}>
+                        <View
+                          style={[
+                            styles.stampBadge,
+                            isSquare ? styles.stampBadgeSquare : styles.stampBadgeRound,
+                            {
+                              borderColor: stamp.border,
+                              backgroundColor: stamp.isChecked ? stamp.fill : Palette.surface,
+                            },
+                            stamp.isChecked ? styles.stampBadgeActive : styles.stampBadgeInactive,
+                            stamp.isToday && styles.stampBadgeToday,
+                          ]}>
+                          <Text
+                            style={[
+                              styles.stampIcon,
+                              stamp.isChecked ? styles.stampIconActive : styles.stampIconInactive,
+                            ]}>
+                            {stamp.icon}
+                          </Text>
+                        </View>
+                        <Text style={[styles.stampDay, stamp.isToday && styles.stampDayToday]}>
+                          {stamp.day}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                  {stampBottomRow.map((stamp, index) => {
+                    const isSquare = stamp.shape === 'square';
+                    return (
+                      <View
+                        key={stamp.id}
+                        style={[
+                          styles.stampItemAbsolute,
+                          {
+                            left: stampBottomPositions[index],
+                            top: stampRowOffset,
+                            width: stampItemWidth,
+                            transform: [{ translateX: -stampItemWidth / 2 }],
+                          },
+                        ]}>
+                        <View
+                          style={[
+                            styles.stampBadge,
+                            isSquare ? styles.stampBadgeSquare : styles.stampBadgeRound,
+                            {
+                              borderColor: stamp.border,
+                              backgroundColor: stamp.isChecked ? stamp.fill : Palette.surface,
+                            },
+                            stamp.isChecked ? styles.stampBadgeActive : styles.stampBadgeInactive,
+                            stamp.isToday && styles.stampBadgeToday,
+                          ]}>
+                          <Text
+                            style={[
+                              styles.stampIcon,
+                              stamp.isChecked ? styles.stampIconActive : styles.stampIconInactive,
+                            ]}>
+                            {stamp.icon}
+                          </Text>
+                        </View>
+                        <Text style={[styles.stampDay, stamp.isToday && styles.stampDayToday]}>
+                          {stamp.day}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text style={styles.stampNote}>오늘 스탬프를 찍으면 연속 기록이 이어져요.</Text>
+              </View>
+            </View>
+          );
+        }
+
+        if (item === 'sentences') {
+          return (
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>인상 깊었던 문장</Text>
+                <Pressable
+                  style={styles.plusButton}
+                  onPress={() => setIsAddingSentence((prev) => !prev)}
+                  accessibilityRole="button">
+                  <Text style={styles.plusButtonText}>＋</Text>
+                </Pressable>
+              </View>
+              {isAddingSentence && (
+                <View style={styles.sentenceInputCard}>
+                  <View style={styles.sentenceInputRow}>
+                    <TextInput
+                      value={sentencePage}
+                      onChangeText={setSentencePage}
+                      placeholder="페이지"
+                      placeholderTextColor={Palette.textTertiary}
+                      keyboardType="number-pad"
+                      style={styles.sentencePageInput}
+                    />
+                    <Pressable
+                      style={styles.sentenceAddButton}
+                      onPress={handleAddSentence}
+                      accessibilityRole="button">
+                      <Text style={styles.sentenceAddText}>추가</Text>
+                    </Pressable>
+                  </View>
+                  <TextInput
+                    value={sentenceText}
+                    onChangeText={setSentenceText}
+                    placeholder="인상 깊었던 문장을 입력하세요"
+                    placeholderTextColor={Palette.textTertiary}
+                    multiline
+                    style={styles.sentenceTextInput}
+                  />
+                </View>
+              )}
+              {sentences.length === 0 ? (
+                <Text style={styles.emptyText}>아직 등록된 문장이 없어요.</Text>
+              ) : (
+                sentences.map((item) => (
+                  <View key={item.id} style={styles.sentenceCard}>
+                    <View style={styles.pageBadge}>
+                      <Text style={styles.pageBadgeText}>{item.page}</Text>
+                    </View>
+                    <Text style={styles.sentenceText}>{item.text}</Text>
+                    <View style={styles.sentenceMeta}>
+                      <View style={styles.sentenceAvatar}>
+                        <Text style={styles.sentenceAvatarText}>
+                          {getEmojiForName(item.name)}
+                        </Text>
+                      </View>
+                      <Text style={styles.sentenceName}>{item.name}</Text>
+                    </View>
+                    <View style={styles.replySection}>
+                      {item.replies && item.replies.length > 0 ? (
+                        item.replies.map((reply) => (
+                          <View key={reply.id} style={styles.replyRow}>
+                            <View style={styles.replyAvatar}>
+                              <Text style={styles.replyAvatarText}>
+                                {getEmojiForName(reply.name)}
+                              </Text>
+                            </View>
+                            <View style={styles.replyBody}>
+                              <View style={styles.replyHeader}>
+                                <Text style={styles.replyName}>{reply.name}</Text>
+                                <Text style={styles.replyTime}>{reply.time}</Text>
+                              </View>
+                              <Text style={styles.replyText}>{reply.text}</Text>
+                            </View>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.replyEmptyText}>첫 번째 답글을 남겨보세요.</Text>
+                      )}
+                      {openReplyId === item.id ? (
+                        <View style={styles.replyInputRow}>
+                          <TextInput
+                            value={replyInputs[item.id] ?? ''}
+                            onChangeText={(value) =>
+                              setReplyInputs((prev) => ({ ...prev, [item.id]: value }))
+                            }
+                            placeholder="답글을 입력하세요..."
+                            placeholderTextColor={Palette.textTertiary}
+                            style={styles.replyInput}
+                          />
+                          <Pressable
+                            style={styles.sendButton}
+                            onPress={() => handleAddReply(item.id)}
+                            accessibilityRole="button">
+                            <Text style={styles.sendButtonText}>↗</Text>
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <Pressable
+                          style={styles.replyToggleButton}
+                          onPress={() => setOpenReplyId(item.id)}
+                          accessibilityRole="button">
+                          <Text style={styles.replyToggleText}>답글 달기</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          );
+        }
+
+        return (
+          <View style={styles.section}>
+            <View style={[styles.sectionHeaderRow, styles.feedHeaderRow]}>
+              <Text style={styles.sectionTitle}>독서 기록 피드</Text>
+              <Pressable
+                style={styles.feedUploadButton}
+                onPress={() => setIsUploadOpen(true)}
+                accessibilityRole="button">
+                <Text style={styles.feedUploadText}>업로드</Text>
+              </Pressable>
+            </View>
+            <View style={styles.galleryGrid}>
+              {feedItems.map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={[styles.galleryItem, { width: galleryCardSize }]}
+                  onPress={() => setSelectedPostId(item.id)}
+                  accessibilityRole="button">
+                  <Image source={item.image} style={styles.galleryImage} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        );
+      },
+    [
+      completedStampCount,
+      detail.author,
+      detail.tag,
+      detail.title,
+      feedItems,
+      galleryCardSize,
+      getEmojiForName,
+      handleAddReply,
+      handleAddSentence,
+      insets.bottom,
+      isAddingSentence,
+      openReplyId,
+      replyInputs,
+      router,
+      sentencePage,
+      sentenceText,
+      sentences,
+      selectedWeek,
+      setIsUploadOpen,
+      setOpenReplyId,
+      setSelectedPostId,
+      setSelectedWeek,
+      stampBottomPositions,
+      stampBottomRow,
+      stampItemWidth,
+      stampRowOffset,
+      stampTopPositions,
+      stampTopRow,
+      streakCount,
+      weeklyStamps,
+    ],
+  );
+  const gallery = useMemo(() => gallerySeed, []);
+  const selectedPost = useMemo(
+    () => (selectedPostId ? feedItems.find((item) => item.id === selectedPostId) ?? null : null),
+    [feedItems, selectedPostId],
+  );
+  const selectedUploadSource = useMemo(() => {
+    if (selectedUploadUri) {
+      return { uri: selectedUploadUri };
+    }
+    if (selectedUploadImage) {
+      return selectedUploadImage;
+    }
+    return null;
+  }, [selectedUploadImage, selectedUploadUri]);
 
   const handleUploadFeed = () => {
     if (!selectedUploadImage && !selectedUploadUri) {
@@ -468,488 +866,270 @@ export default function BookDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.headerTitle}>교환독서 상세 페이지</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-
-        <View style={styles.bookCard}>
-          <View style={styles.bookCover}>
-            <Text style={styles.bookCoverText}>표지</Text>
-          </View>
-          <View style={styles.bookInfo}>
-            <View style={styles.bookTitleRow}>
-              <Text style={styles.bookTitle}>{detail.title}</Text>
-              <View style={styles.bookTagInline}>
-                <Text style={styles.bookTagText}>{detail.tag}</Text>
-              </View>
-            </View>
-            <Text style={styles.bookAuthor}>{detail.author}</Text>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>교환독서 정보</Text>
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>시작일</Text>
-              <Text style={styles.infoValue}>2024.01.03 시작</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>목표일</Text>
-              <Text style={styles.infoValue}>2024.02.15 까지</Text>
-            </View>
-            <View style={styles.memberRow}>
-              <View style={styles.memberAvatarStack}>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>{getEmojiForName('나')}</Text>
-                </View>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>{getEmojiForName('지민')}</Text>
-                </View>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>{getEmojiForName('서준')}</Text>
-                </View>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>{getEmojiForName('수아')}</Text>
-                </View>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberInitial}>{getEmojiForName('민호')}</Text>
-                </View>
-              </View>
-              <Text style={styles.memberCount}>5명이 함께 읽고 있어요</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>일주일 출석 스탬프</Text>
-          <View style={styles.stampCard}>
-            <View style={styles.stampHeader}>
-              <Text style={styles.stampTitle}>
-                {selectedWeek === 'current'
-                  ? `이번 주 ${completedStampCount}일 출석`
-                  : `지난 주 ${completedStampCount}일 출석`}
-              </Text>
-            </View>
-            <View style={styles.stampControlRow}>
-              <View style={styles.weekToggle}>
-                <Pressable
-                  onPress={() => setSelectedWeek('current')}
-                  style={[
-                    styles.weekToggleButton,
-                    selectedWeek === 'current' && styles.weekToggleButtonActive,
-                  ]}
-                  accessibilityRole="button">
-                  <Text
-                    style={[
-                      styles.weekToggleText,
-                      selectedWeek === 'current' && styles.weekToggleTextActive,
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={insets.top}>
+      <SafeAreaView style={styles.safeArea}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <FlatList
+          data={sections}
+          keyExtractor={(item) => item}
+          renderItem={renderSection}
+          contentContainerStyle={contentContainerStyle}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+          removeClippedSubviews={Platform.OS === 'android'}
+          onScrollBeginDrag={Keyboard.dismiss}
+        />
+          {selectedPostId !== null && (
+            <Modal visible transparent animationType="fade">
+              <KeyboardAvoidingView
+                style={styles.previewOverlay}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={insets.top}>
+                <View style={styles.previewCard}>
+                  <Pressable
+                    style={styles.previewCloseIcon}
+                    onPress={() => setSelectedPostId(null)}
+                    accessibilityRole="button">
+                    <Text style={styles.previewCloseIconText}>×</Text>
+                  </Pressable>
+                  <ScrollView
+                    style={styles.previewScroll}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="interactive"
+                    contentContainerStyle={[
+                      styles.previewContent,
+                      { paddingBottom: 160 + insets.bottom },
                     ]}>
-                    이번 주
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setSelectedWeek('previous')}
-                  style={[
-                    styles.weekToggleButton,
-                    selectedWeek === 'previous' && styles.weekToggleButtonActive,
-                  ]}
-                  accessibilityRole="button">
-                  <Text
-                    style={[
-                      styles.weekToggleText,
-                      selectedWeek === 'previous' && styles.weekToggleTextActive,
-                    ]}>
-                    지난 주
-                  </Text>
-                </Pressable>
-              </View>
-              <View style={styles.streakBadge}>
-                <Text style={styles.streakLabel}>연속</Text>
-                <Text style={styles.streakValue}>{streakCount}일</Text>
-              </View>
-            </View>
-            <View style={styles.stampLayout}>
-              {stampTopRow.map((stamp, index) => {
-                const isSquare = stamp.shape === 'square';
-                return (
-                  <View
-                    key={stamp.id}
-                    style={[
-                      styles.stampItemAbsolute,
-                      {
-                        left: stampTopPositions[index],
-                        top: 0,
-                        width: stampItemWidth,
-                        transform: [{ translateX: -stampItemWidth / 2 }],
-                      },
-                    ]}>
-                    <View
-                      style={[
-                        styles.stampBadge,
-                        isSquare ? styles.stampBadgeSquare : styles.stampBadgeRound,
-                        {
-                          borderColor: stamp.border,
-                          backgroundColor: stamp.isChecked ? stamp.fill : Palette.surface,
-                        },
-                        stamp.isChecked ? styles.stampBadgeActive : styles.stampBadgeInactive,
-                        stamp.isToday && styles.stampBadgeToday,
-                      ]}>
-                      <Text
-                        style={[
-                          styles.stampIcon,
-                          stamp.isChecked ? styles.stampIconActive : styles.stampIconInactive,
-                        ]}>
-                        {stamp.icon}
-                      </Text>
-                    </View>
-                    <Text style={[styles.stampDay, stamp.isToday && styles.stampDayToday]}>
-                      {stamp.day}
-                    </Text>
-                  </View>
-                );
-              })}
-              {stampBottomRow.map((stamp, index) => {
-                const isSquare = stamp.shape === 'square';
-                return (
-                  <View
-                    key={stamp.id}
-                    style={[
-                      styles.stampItemAbsolute,
-                      {
-                        left: stampBottomPositions[index],
-                        top: stampRowOffset,
-                        width: stampItemWidth,
-                        transform: [{ translateX: -stampItemWidth / 2 }],
-                      },
-                    ]}>
-                    <View
-                      style={[
-                        styles.stampBadge,
-                        isSquare ? styles.stampBadgeSquare : styles.stampBadgeRound,
-                        {
-                          borderColor: stamp.border,
-                          backgroundColor: stamp.isChecked ? stamp.fill : Palette.surface,
-                        },
-                        stamp.isChecked ? styles.stampBadgeActive : styles.stampBadgeInactive,
-                        stamp.isToday && styles.stampBadgeToday,
-                      ]}>
-                      <Text
-                        style={[
-                          styles.stampIcon,
-                          stamp.isChecked ? styles.stampIconActive : styles.stampIconInactive,
-                        ]}>
-                        {stamp.icon}
-                      </Text>
-                    </View>
-                    <Text style={[styles.stampDay, stamp.isToday && styles.stampDayToday]}>
-                      {stamp.day}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-            <Text style={styles.stampNote}>오늘 스탬프를 찍으면 연속 기록이 이어져요.</Text>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>인상 깊었던 문장</Text>
-            <Pressable
-              style={styles.plusButton}
-              onPress={() => setIsAddingSentence((prev) => !prev)}
-              accessibilityRole="button">
-              <Text style={styles.plusButtonText}>＋</Text>
-            </Pressable>
-          </View>
-          {isAddingSentence && (
-            <View style={styles.sentenceInputCard}>
-              <View style={styles.sentenceInputRow}>
-                <TextInput
-                  value={sentencePage}
-                  onChangeText={setSentencePage}
-                  placeholder="페이지"
-                  placeholderTextColor={Palette.textTertiary}
-                  keyboardType="number-pad"
-                  style={styles.sentencePageInput}
-                />
-                <Pressable
-                  style={styles.sentenceAddButton}
-                  onPress={handleAddSentence}
-                  accessibilityRole="button">
-                  <Text style={styles.sentenceAddText}>추가</Text>
-                </Pressable>
-              </View>
-              <TextInput
-                value={sentenceText}
-                onChangeText={setSentenceText}
-                placeholder="인상 깊었던 문장을 입력하세요"
-                placeholderTextColor={Palette.textTertiary}
-                multiline
-                style={styles.sentenceTextInput}
-              />
-            </View>
-          )}
-          {sentences.length === 0 ? (
-            <Text style={styles.emptyText}>아직 등록된 문장이 없어요.</Text>
-          ) : (
-            sentences.map((item) => (
-              <View key={item.id} style={styles.sentenceCard}>
-                <View style={styles.pageBadge}>
-                  <Text style={styles.pageBadgeText}>{item.page}</Text>
-                </View>
-                <Text style={styles.sentenceText}>{item.text}</Text>
-                <View style={styles.sentenceMeta}>
-                  <View style={styles.sentenceAvatar}>
-                    <Text style={styles.sentenceAvatarText}>
-                      {getEmojiForName(item.name)}
-                    </Text>
-                  </View>
-                  <Text style={styles.sentenceName}>{item.name}</Text>
-                </View>
-                <View style={styles.replySection}>
-                  {item.replies && item.replies.length > 0 ? (
-                    item.replies.map((reply) => (
-                      <View key={reply.id} style={styles.replyRow}>
-                        <View style={styles.replyAvatar}>
-                          <Text style={styles.replyAvatarText}>
-                            {getEmojiForName(reply.name)}
+                    {selectedPost && (
+                      <View style={styles.previewHeaderRow}>
+                        <View style={styles.previewUserAvatar}>
+                          <Text style={styles.previewUserInitial}>
+                            {getEmojiForName(selectedPost.name)}
                           </Text>
                         </View>
-                        <View style={styles.replyBody}>
-                          <View style={styles.replyHeader}>
-                            <Text style={styles.replyName}>{reply.name}</Text>
-                            <Text style={styles.replyTime}>{reply.time}</Text>
-                          </View>
-                          <Text style={styles.replyText}>{reply.text}</Text>
+                        <View style={styles.previewUserMeta}>
+                          <Text style={styles.previewUserName}>{selectedPost.name}</Text>
+                          <Text style={styles.previewUserTime}>{selectedPost.time}</Text>
                         </View>
                       </View>
-                    ))
-                  ) : (
-                    <Text style={styles.replyEmptyText}>첫 번째 답글을 남겨보세요.</Text>
-                  )}
-                  {openReplyId === item.id ? (
-                    <View style={styles.replyInputRow}>
-                      <TextInput
-                        value={replyInputs[item.id] ?? ''}
-                        onChangeText={(value) =>
-                          setReplyInputs((prev) => ({ ...prev, [item.id]: value }))
-                        }
-                        placeholder="답글을 입력하세요..."
-                        placeholderTextColor={Palette.textTertiary}
-                        style={styles.replyInput}
+                    )}
+                    {selectedPost && (
+                      <Image
+                        source={selectedPost.image}
+                        style={[styles.previewImage, { height: previewImageHeight }]}
                       />
-                      <Pressable
-                        style={styles.sendButton}
-                        onPress={() => handleAddReply(item.id)}
-                        accessibilityRole="button">
-                        <Text style={styles.sendButtonText}>↗</Text>
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <Pressable
-                      style={styles.replyToggleButton}
-                      onPress={() => setOpenReplyId(item.id)}
-                      accessibilityRole="button">
-                      <Text style={styles.replyToggleText}>답글 달기</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <View style={[styles.sectionHeaderRow, styles.feedHeaderRow]}>
-            <Text style={styles.sectionTitle}>독서 기록 피드</Text>
-            <Pressable
-              style={styles.feedUploadButton}
-              onPress={() => setIsUploadOpen(true)}
-              accessibilityRole="button">
-              <Text style={styles.feedUploadText}>업로드</Text>
-            </Pressable>
-          </View>
-          <View style={styles.galleryGrid}>
-            {feedItems.map((item) => (
-              <Pressable
-                key={item.id}
-                style={[styles.galleryItem, { width: galleryCardSize }]}
-                onPress={() => setSelectedPostId(item.id)}
-                accessibilityRole="button">
-                <Image source={item.image} style={styles.galleryImage} />
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      </ScrollView>
-
-      <Modal visible={selectedPostId !== null} transparent animationType="fade">
-        <View style={styles.previewOverlay}>
-          <View style={styles.previewCard}>
-            <Pressable
-              style={styles.previewCloseIcon}
-              onPress={() => setSelectedPostId(null)}
-              accessibilityRole="button">
-              <Text style={styles.previewCloseIconText}>×</Text>
-            </Pressable>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.previewContent}>
-              {selectedPost && (
-                <View style={styles.previewHeaderRow}>
-                  <View style={styles.previewUserAvatar}>
-                    <Text style={styles.previewUserInitial}>
-                      {getEmojiForName(selectedPost.name)}
-                    </Text>
-                  </View>
-                  <View style={styles.previewUserMeta}>
-                    <Text style={styles.previewUserName}>{selectedPost.name}</Text>
-                    <Text style={styles.previewUserTime}>{selectedPost.time}</Text>
-                  </View>
-                </View>
-              )}
-              {selectedPost && (
-                <Image
-                  source={selectedPost.image}
-                  style={[styles.previewImage, { height: previewImageHeight }]}
-                />
-              )}
-              {selectedPost && (
-                <>
-                  <Text style={styles.feedCaption}>{selectedPost.caption}</Text>
-                  <View style={styles.feedMetaRow}>
-                    <Pressable
-                      style={styles.likeButton}
-                      onPress={() => handleToggleLike(selectedPost.id)}
-                      accessibilityRole="button">
-                      <Text
-                        style={[
-                          styles.likeButtonText,
-                          likedPostIds.has(selectedPost.id) && styles.likeButtonTextActive,
-                        ]}>
-                        {likedPostIds.has(selectedPost.id) ? '♥' : '♡'}
-                      </Text>
-                    </Pressable>
-                    <Text style={styles.feedMetaText}>좋아요 {selectedPost.likes}</Text>
-                  </View>
-                  <View style={styles.feedCommentList}>
-                    {selectedPost.comments.length === 0 ? (
-                      <Text style={styles.replyEmptyText}>첫 댓글을 남겨보세요.</Text>
-                    ) : (
-                      selectedPost.comments.map((comment) => (
-                        <View key={comment.id} style={styles.replyRow}>
-                          <View style={styles.replyAvatar}>
-                            <Text style={styles.replyAvatarText}>
-                              {getEmojiForName(comment.name)}
+                    )}
+                    {selectedPost && (
+                      <>
+                        <Text style={styles.feedCaption}>{selectedPost.caption}</Text>
+                        <View style={styles.feedMetaRow}>
+                          <Pressable
+                            style={styles.likeButton}
+                            onPress={() => handleToggleLike(selectedPost.id)}
+                            accessibilityRole="button">
+                            <Text
+                              style={[
+                                styles.likeButtonText,
+                                likedPostIds.has(selectedPost.id) && styles.likeButtonTextActive,
+                              ]}>
+                              {likedPostIds.has(selectedPost.id) ? '♥' : '♡'}
                             </Text>
-                          </View>
-                          <View style={styles.replyBody}>
-                            <View style={styles.replyHeader}>
-                              <Text style={styles.replyName}>{comment.name}</Text>
-                              <Text style={styles.replyTime}>{comment.time}</Text>
-                            </View>
-                            <Text style={styles.replyText}>{comment.text}</Text>
+                          </Pressable>
+                          <Text style={styles.feedMetaText}>좋아요 {selectedPost.likes}</Text>
+                        </View>
+                        <View style={styles.feedCommentList}>
+                          {selectedPost.comments.length === 0 ? (
+                            <Text style={styles.replyEmptyText}>첫 댓글을 남겨보세요.</Text>
+                          ) : (
+                            selectedPost.comments.map((comment) => (
+                              <View key={comment.id} style={styles.replyRow}>
+                                <View style={styles.replyAvatar}>
+                                  <Text style={styles.replyAvatarText}>
+                                    {getEmojiForName(comment.name)}
+                                  </Text>
+                                </View>
+                                <View style={styles.replyBody}>
+                                  <View style={styles.replyHeader}>
+                                    <Text style={styles.replyName}>{comment.name}</Text>
+                                    <Text style={styles.replyTime}>{comment.time}</Text>
+                                  </View>
+                                  <Text style={styles.replyText}>{comment.text}</Text>
+                                </View>
+                              </View>
+                            ))
+                          )}
+                        </View>
+                        <View style={[styles.replyInputRow, styles.previewReplyInputRow]}>
+                          <TextInput
+                            value={feedCommentText}
+                            onChangeText={setFeedCommentText}
+                            placeholder="댓글을 입력하세요..."
+                            placeholderTextColor={Palette.textTertiary}
+                            style={styles.replyInput}
+                          />
+                          <Pressable
+                            style={[styles.sendButton, styles.previewSendButton]}
+                            onPress={handleAddFeedComment}
+                            accessibilityRole="button">
+                            <Text style={[styles.sendButtonText, styles.previewSendButtonText]}>
+                              ↗
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </>
+                    )}
+                  </ScrollView>
+                </View>
+              </KeyboardAvoidingView>
+            </Modal>
+          )}
+
+          {isUploadOpen && (
+            <Modal visible transparent animationType="fade">
+              <KeyboardAvoidingView
+                style={[styles.previewOverlay, styles.uploadOverlay]}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={insets.top}>
+                <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+                  <View style={[styles.uploadCard, { maxHeight: height * 0.8 }]}>
+                    <ScrollView
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode="interactive"
+                      contentContainerStyle={{ paddingBottom: 160 + insets.bottom }}>
+                      <View style={styles.uploadHero}>
+                        <View style={styles.uploadHeroBadge}>
+                          <Text style={styles.uploadHeroBadgeText}>📚</Text>
+                        </View>
+                        <View style={styles.uploadHeroText}>
+                          <Text style={styles.uploadTitle}>독서 기록 업로드</Text>
+                          <Text style={styles.uploadSubtitle}>
+                            사진과 기록을 한 번에 정리해 공유해요.
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.uploadSection}>
+                        <View style={styles.uploadHeaderRow}>
+                          <Text style={styles.uploadSectionTitle}>사진 선택</Text>
+                          <View style={styles.uploadActionsRow}>
+                            <Pressable
+                              onPress={handlePickPhoto}
+                              style={[styles.uploadActionButton, styles.uploadActionPrimary]}
+                              accessibilityRole="button">
+                              <Text style={[styles.uploadActionText, styles.uploadActionTextPrimary]}>
+                                내 사진
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={handleTakePhoto}
+                              style={styles.uploadActionButton}
+                              accessibilityRole="button">
+                              <Text style={styles.uploadActionText}>직접 촬영</Text>
+                            </Pressable>
                           </View>
                         </View>
-                      ))
-                    )}
-                  </View>
-                  <View style={[styles.replyInputRow, styles.previewReplyInputRow]}>
-                    <TextInput
-                      value={feedCommentText}
-                      onChangeText={setFeedCommentText}
-                      placeholder="댓글을 입력하세요..."
-                      placeholderTextColor={Palette.textTertiary}
-                      style={styles.replyInput}
-                    />
-                    <Pressable
-                      style={[styles.sendButton, styles.previewSendButton]}
-                      onPress={handleAddFeedComment}
-                      accessibilityRole="button">
-                      <Text style={[styles.sendButtonText, styles.previewSendButtonText]}>↗</Text>
-                    </Pressable>
-                  </View>
-                </>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+                        <View style={styles.uploadPreviewCard}>
+                          {selectedUploadSource ? (
+                            <Image
+                              source={selectedUploadSource}
+                              style={styles.uploadPreview}
+                            />
+                          ) : (
+                            <View style={styles.uploadEmptyState}>
+                              <Text style={styles.uploadEmptyTitle}>기록할 사진을 선택하세요</Text>
+                              <Text style={styles.uploadEmptyText}>
+                                내 사진 또는 직접 촬영으로 업로드할 수 있어요.
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.uploadLabel}>추천 사진</Text>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.uploadGalleryRow}>
+                          {gallery.map((item, index) => {
+                            const isActive = selectedUploadImage === item;
+                            return (
+                              <Pressable
+                                key={`upload-${index}`}
+                                onPress={() => {
+                                  setSelectedUploadImage(item);
+                                  setSelectedUploadUri(null);
+                                }}
+                                style={[styles.uploadImageOption, isActive && styles.uploadImageActive]}
+                                accessibilityRole="button">
+                                <Image source={item} style={styles.uploadImage} />
+                                {isActive && (
+                                  <View style={styles.uploadImageBadge}>
+                                    <Text style={styles.uploadImageBadgeText}>✓</Text>
+                                  </View>
+                                )}
+                              </Pressable>
+                            );
+                          })}
+                        </ScrollView>
+                      </View>
 
-      <Modal visible={isUploadOpen} transparent animationType="fade">
-        <View style={styles.previewOverlay}>
-          <View style={styles.uploadCard}>
-            <Text style={styles.uploadTitle}>독서 기록 업로드</Text>
-            <View style={styles.uploadHeaderRow}>
-              <Text style={styles.uploadLabel}>사진 선택</Text>
-              <View style={styles.uploadActionsRow}>
-                <Pressable onPress={handlePickPhoto} accessibilityRole="button">
-                  <Text style={styles.uploadPickText}>내 사진</Text>
-                </Pressable>
-                <Pressable onPress={handleTakePhoto} accessibilityRole="button">
-                  <Text style={styles.uploadPickText}>직접 촬영</Text>
-                </Pressable>
-              </View>
-            </View>
-            {selectedUploadUri && (
-              <Image source={{ uri: selectedUploadUri }} style={styles.uploadPreview} />
-            )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {gallery.map((item, index) => {
-                const isActive = selectedUploadImage === item;
-                return (
-                  <Pressable
-                    key={`upload-${index}`}
-                    onPress={() => {
-                      setSelectedUploadImage(item);
-                      setSelectedUploadUri(null);
-                    }}
-                    style={[styles.uploadImageOption, isActive && styles.uploadImageActive]}
-                    accessibilityRole="button">
-                    <Image source={item} style={styles.uploadImage} />
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <Text style={styles.uploadLabel}>글 작성</Text>
-            <TextInput
-              value={uploadCaption}
-              onChangeText={setUploadCaption}
-              placeholder="독서 기록을 남겨보세요."
-              placeholderTextColor={Palette.textTertiary}
-              style={styles.uploadInput}
-              multiline
-            />
-            <View style={styles.uploadActions}>
-              <Pressable
-                style={styles.uploadCancel}
-                onPress={() => setIsUploadOpen(false)}
-                accessibilityRole="button">
-                <Text style={styles.uploadCancelText}>취소</Text>
-              </Pressable>
-              <Pressable
-                style={styles.uploadSubmit}
-                onPress={handleUploadFeed}
-                accessibilityRole="button">
-                <Text style={styles.uploadSubmitText}>업로드</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
+                      <View style={styles.uploadSection}>
+                        <Text style={styles.uploadSectionTitle}>글 작성</Text>
+                        <View style={styles.uploadInputCard}>
+                          <TextInput
+                            value={uploadCaption}
+                            onChangeText={setUploadCaption}
+                            placeholder="독서 기록을 남겨보세요."
+                            placeholderTextColor={Palette.textTertiary}
+                            style={styles.uploadInput}
+                            multiline
+                            maxLength={200}
+                          />
+                          <View style={styles.uploadMetaRow}>
+                            <Text style={styles.uploadHint}>
+                              오늘 느낀 점, 인상 깊은 문장을 적어보세요.
+                            </Text>
+                            <Text style={styles.uploadCount}>
+                              {uploadCaption.trim().length}/200
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                      <View style={styles.uploadActions}>
+                        <Pressable
+                          style={styles.uploadCancel}
+                          onPress={() => setIsUploadOpen(false)}
+                          accessibilityRole="button">
+                          <Text style={styles.uploadCancelText}>취소</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.uploadSubmit}
+                          onPress={handleUploadFeed}
+                          accessibilityRole="button">
+                          <Text style={styles.uploadSubmitText}>업로드</Text>
+                        </Pressable>
+                      </View>
+                    </ScrollView>
+                  </View>
+                </TouchableWithoutFeedback>
+              </KeyboardAvoidingView>
+            </Modal>
+          )}
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
+    flex: 1,
+    backgroundColor: Palette.background,
+  },
+  keyboardAvoidingView: {
     flex: 1,
     backgroundColor: Palette.background,
   },
@@ -1518,39 +1698,123 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 18,
     backgroundColor: Palette.surface,
-    padding: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    ...Shadows.card,
+  },
+  uploadHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Palette.border,
+  },
+  uploadHeroBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Palette.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  uploadHeroBadgeText: {
+    fontSize: 18,
+  },
+  uploadHeroText: {
+    flex: 1,
   },
   uploadTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: Palette.textPrimary,
-    marginBottom: 12,
+  },
+  uploadSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Palette.textSecondary,
+  },
+  uploadSection: {
+    marginBottom: 16,
   },
   uploadHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 10,
+  },
+  uploadSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Palette.textPrimary,
+    marginBottom: 8,
   },
   uploadActionsRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
+  },
+  uploadActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: Palette.background,
+    borderWidth: 1,
+    borderColor: Palette.border,
+  },
+  uploadActionPrimary: {
+    backgroundColor: Palette.accentSoft,
+    borderColor: 'transparent',
+  },
+  uploadActionText: {
+    fontSize: 12,
+    color: Palette.textSecondary,
+    fontWeight: '600',
+  },
+  uploadActionTextPrimary: {
+    color: Palette.accent,
+  },
+  uploadPreviewCard: {
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    backgroundColor: Palette.background,
+    marginBottom: 12,
+    aspectRatio: 1,
+    overflow: 'hidden',
+  },
+  uploadPreview: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  uploadEmptyState: {
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadEmptyTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Palette.textPrimary,
+  },
+  uploadEmptyText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: Palette.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   uploadLabel: {
     fontSize: 12,
     color: Palette.textSecondary,
     marginBottom: 8,
   },
-  uploadPickText: {
-    fontSize: 12,
-    color: Palette.accent,
-    fontWeight: '600',
-  },
-  uploadPreview: {
-    width: '100%',
-    height: 180,
-    borderRadius: 14,
-    marginBottom: 10,
-    resizeMode: 'cover',
+  uploadGalleryRow: {
+    paddingBottom: 4,
   },
   uploadImageOption: {
     width: 72,
@@ -1569,16 +1833,48 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'cover',
   },
-  uploadInput: {
-    minHeight: 90,
-    borderRadius: 12,
+  uploadImageBadge: {
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Palette.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadImageBadgeText: {
+    fontSize: 11,
+    color: Palette.surface,
+    fontWeight: '700',
+  },
+  uploadInputCard: {
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Palette.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: Palette.background,
+    padding: 12,
+  },
+  uploadInput: {
+    minHeight: 96,
     fontSize: 13,
     color: Palette.textPrimary,
-    backgroundColor: Palette.background,
+    lineHeight: 19,
+  },
+  uploadMetaRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  uploadHint: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+  },
+  uploadCount: {
+    fontSize: 11,
+    color: Palette.textTertiary,
   },
   uploadActions: {
     flexDirection: 'row',
@@ -1617,6 +1913,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 8,
   },
+  uploadOverlay: {
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
   previewCard: {
     width: '100%',
     height: '88%',
@@ -1625,6 +1925,9 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.surface,
     padding: 16,
     ...Shadows.card,
+  },
+  previewScroll: {
+    flex: 1,
   },
   previewContent: {
     paddingTop: 10,
