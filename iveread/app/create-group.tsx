@@ -19,9 +19,24 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
-import { useReadingClubs } from '@/contexts/reading-clubs-context';
+import { ApiClientError } from '@/services/api-client';
+import { searchBooks } from '@/services/books';
+import { createGroup } from '@/services/groups';
+import type { Book } from '@/types/book';
 
 const memberOptions = Array.from({ length: 11 }, (_, index) => index + 2);
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiClientError) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
+
+const buildGoalDate = (startDate: string) => startDate;
 
 export default function CreateGroupScreen() {
   const router = useRouter();
@@ -29,7 +44,6 @@ export default function CreateGroupScreen() {
   const params = useLocalSearchParams<{ query?: string; tag?: string }>();
   const tagParam = Array.isArray(params.tag) ? params.tag[0] : params.tag;
   const today = new Date();
-  const { addClub } = useReadingClubs();
   const [form, setForm] = useState({
     groupName: '',
     bookTitle: '',
@@ -38,6 +52,11 @@ export default function CreateGroupScreen() {
     memberLimit: '',
     tags: tagParam ?? '',
   });
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [bookResults, setBookResults] = useState<Book[]>([]);
+  const [isBookPickerOpen, setIsBookPickerOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
@@ -73,6 +92,20 @@ export default function CreateGroupScreen() {
   const updateForm = (key: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
+
+  useEffect(() => {
+    const trimmedTitle = form.bookTitle.trim();
+    if (!trimmedTitle) {
+      setSelectedBook(null);
+      setBookResults([]);
+      setIsBookPickerOpen(false);
+      setPendingSubmit(false);
+      return;
+    }
+    if (selectedBook && selectedBook.title !== trimmedTitle) {
+      setSelectedBook(null);
+    }
+  }, [form.bookTitle, selectedBook]);
 
   const scrollToInput = useCallback((inputRef: React.RefObject<TextInput | null>) => {
     const scrollView = scrollViewRef.current;
@@ -114,7 +147,46 @@ export default function CreateGroupScreen() {
     [insets.bottom]
   );
 
-  const handleSubmit = () => {
+  const handleCreateGroup = async (book: Book) => {
+    const startDate = selectedDateKeyFromPicker!;
+    const payload = {
+      name: form.groupName.trim(),
+      startDate,
+      goalDate: buildGoalDate(startDate),
+      book: {
+        isbn: book.isbn,
+        title: book.title,
+        author: book.author,
+        publisher: book.publisher,
+        coverImage: book.coverImage,
+        totalPage: book.totalPage ?? 0,
+      },
+    };
+    await createGroup(payload);
+    router.replace('/(tabs)');
+  };
+
+  const handleSelectBook = async (book: Book) => {
+    setSelectedBook(book);
+    updateForm('bookTitle', book.title);
+    setIsBookPickerOpen(false);
+    setBookResults([]);
+
+    if (pendingSubmit) {
+      setPendingSubmit(false);
+      try {
+        setIsSubmitting(true);
+        await handleCreateGroup(book);
+      } catch (error) {
+        setErrorMessage(getErrorMessage(error, '그룹 생성에 실패했어요.'));
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
     if (
       !form.groupName.trim() ||
       !form.bookTitle.trim() ||
@@ -124,30 +196,37 @@ export default function CreateGroupScreen() {
       setErrorMessage('그룹 이름, 책 제목, 시작일, 모집 인원은 필수 입력이에요.');
       return;
     }
-    const memberLimit = Number(form.memberLimit);
-    const normalizedTags = form.tags
-      .split(',')
-      .map((tag: string) => tag.trim())
-      .filter(Boolean);
-    const labelTag = normalizedTags.length > 0 ? normalizedTags[0] : '교환독서';
-    const memberLabel = `${form.memberLimit}명 중 1명 기록 완료`;
-
-    addClub({
-      groupName: form.groupName.trim(),
-      title: form.bookTitle.trim(),
-      author: '작자 미상',
-      tag: `${labelTag} 교환독서`,
-      tags: normalizedTags,
-      progress: 0,
-      members: memberLabel,
-      memberCount: 1,
-      memberLimit,
-      lastActive: '오늘',
-      lastActiveDays: 0,
-      activityScore: 80,
-    });
     setErrorMessage(null);
-    router.replace('/(tabs)');
+    setIsSubmitting(true);
+
+    const trimmedTitle = form.bookTitle.trim();
+    let bookToUse = selectedBook && selectedBook.title === trimmedTitle ? selectedBook : null;
+
+    try {
+      if (!bookToUse) {
+        const search = await searchBooks(trimmedTitle, 1, 10);
+        if (search.items.length === 0) {
+          setErrorMessage('검색 결과가 없어요. 책 제목을 다시 확인해 주세요.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (search.items.length > 1) {
+          setBookResults(search.items);
+          setIsBookPickerOpen(true);
+          setPendingSubmit(true);
+          setIsSubmitting(false);
+          return;
+        }
+        bookToUse = search.items[0];
+        setSelectedBook(bookToUse);
+      }
+
+      await handleCreateGroup(bookToUse);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, '그룹 생성에 실패했어요.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -285,7 +364,9 @@ export default function CreateGroupScreen() {
               {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
               <Pressable onPress={handleSubmit} style={styles.submitButton} accessibilityRole="button">
-                <Text style={styles.submitButtonText}>그룹 생성하기</Text>
+                <Text style={styles.submitButtonText}>
+                  {isSubmitting ? '생성 중...' : '그룹 생성하기'}
+                </Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -389,6 +470,43 @@ export default function CreateGroupScreen() {
                     })}
                   </ScrollView>
                 </View>
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <Modal
+            visible={isBookPickerOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {
+              setIsBookPickerOpen(false);
+              setPendingSubmit(false);
+            }}>
+            <Pressable
+              style={styles.modalBackdrop}
+              onPress={() => {
+                setIsBookPickerOpen(false);
+                setPendingSubmit(false);
+              }}>
+              <Pressable style={styles.pickerSheet} onPress={() => {}} accessibilityRole="menu">
+                <Text style={styles.pickerTitle}>책 선택</Text>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.pickerList}>
+                  {bookResults.map((book) => {
+                    const isActive = selectedBook?.isbn === book.isbn;
+                    return (
+                      <Pressable
+                        key={book.isbn}
+                        style={[styles.pickerItem, isActive && styles.pickerItemActive]}
+                        onPress={() => handleSelectBook(book)}
+                        accessibilityRole="button">
+                        <Text style={styles.pickerItemText}>
+                          {book.title} · {book.author}
+                        </Text>
+                        {isActive && <Text style={styles.pickerCheck}>✓</Text>}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </Pressable>
             </Pressable>
           </Modal>

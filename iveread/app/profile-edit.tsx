@@ -19,14 +19,29 @@ import { Stack, useRouter } from 'expo-router';
 
 import { Palette, Shadows } from '@/constants/ui';
 import { useProfile } from '@/contexts/profile-context';
+import { ApiClientError } from '@/services/api-client';
+import { getMe, updateMe } from '@/services/users';
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiClientError) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
 
 export default function ProfileEditScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, updateProfile } = useProfile();
-  const [nickname, setNickname] = useState(profile.nickname);
+  const { updateProfile } = useProfile();
+  const [nickname, setNickname] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<React.RefObject<TextInput | null> | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const nicknameRef = useRef<TextInput | null>(null);
@@ -68,12 +83,50 @@ export default function ProfileEditScreen() {
     return () => subscription.remove();
   }, [focusedField, scrollToInput]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const load = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const me = await getMe();
+        if (!isActive) return;
+        setNickname(me.nickname ?? '');
+        updateProfile({ nickname: me.nickname ?? '', emoji: me.emoji ?? '' });
+      } catch (error) {
+        if (!isActive) return;
+        const message = getErrorMessage(error, '프로필 정보를 불러오지 못했어요.');
+        setLoadError(message);
+        Alert.alert('안내', message);
+      } finally {
+        if (!isActive) return;
+        setIsLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      isActive = false;
+    };
+  }, [updateProfile]);
+
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 180 + insets.bottom }],
     [insets.bottom]
   );
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
+    if (isLoading) {
+      Alert.alert('안내', '프로필 정보를 불러오는 중이에요.');
+      return;
+    }
+    if (loadError) {
+      Alert.alert('안내', loadError);
+      return;
+    }
     if (!nickname.trim()) {
       Alert.alert('안내', '닉네임을 입력해 주세요.');
       return;
@@ -83,11 +136,20 @@ export default function ProfileEditScreen() {
         Alert.alert('안내', '비밀번호가 서로 다릅니다.');
         return;
       }
-      updateProfile({ nickname: nickname.trim(), password });
-    } else {
-      updateProfile({ nickname: nickname.trim() });
+      Alert.alert('안내', '비밀번호 변경은 아직 지원되지 않습니다.');
+      return;
     }
-    router.back();
+
+    try {
+      setIsSaving(true);
+      const updated = await updateMe({ nickname: nickname.trim() });
+      updateProfile({ nickname: updated.nickname, emoji: updated.emoji ?? '' });
+      router.back();
+    } catch (error) {
+      Alert.alert('안내', getErrorMessage(error, '프로필 수정에 실패했어요.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -124,6 +186,7 @@ export default function ProfileEditScreen() {
                   onChangeText={setNickname}
                   placeholder="닉네임"
                   placeholderTextColor={Palette.textTertiary}
+                  editable={!isLoading}
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onFocus={() => {
@@ -179,7 +242,7 @@ export default function ProfileEditScreen() {
             </View>
 
             <Pressable style={styles.saveButton} onPress={handleSave} accessibilityRole="button">
-              <Text style={styles.saveButtonText}>저장</Text>
+              <Text style={styles.saveButtonText}>{isSaving ? '저장 중...' : '저장'}</Text>
             </Pressable>
           </ScrollView>
         </SafeAreaView>

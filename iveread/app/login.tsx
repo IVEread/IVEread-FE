@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -19,6 +20,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
+import { login } from '@/services/auth';
+import { ApiClientError } from '@/services/api-client';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -29,6 +32,9 @@ export default function LoginScreen() {
   const emailRef = useRef<TextInput | null>(null);
   const passwordRef = useRef<TextInput | null>(null);
   const [focusedField, setFocusedField] = useState<React.RefObject<TextInput | null> | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const scrollToInput = useCallback((inputRef: React.RefObject<TextInput | null>) => {
     const scrollView = scrollViewRef.current;
@@ -70,6 +76,30 @@ export default function LoginScreen() {
     [insets.bottom]
   );
 
+  const handleLogin = useCallback(async () => {
+    if (isSubmitting) return;
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail || !password) {
+      Alert.alert('로그인 실패', '이메일과 비밀번호를 입력해 주세요.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await login({ email: trimmedEmail, password });
+      router.replace('/(tabs)');
+    } catch (error) {
+      const message =
+        error instanceof ApiClientError
+          ? error.message
+          : '로그인에 실패했습니다. 다시 시도해 주세요.';
+      Alert.alert('로그인 실패', message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [email, isSubmitting, password, router]);
+
   return (
     <KeyboardAvoidingView
       style={styles.keyboardAvoidingView}
@@ -104,6 +134,8 @@ export default function LoginScreen() {
                   keyboardType="email-address"
                   returnKeyType="next"
                   blurOnSubmit={false}
+                  value={email}
+                  onChangeText={setEmail}
                   onFocus={() => {
                     setFocusedField(emailRef);
                     scrollToInput(emailRef);
@@ -122,6 +154,8 @@ export default function LoginScreen() {
                   textContentType="oneTimeCode"
                   returnKeyType="done"
                   blurOnSubmit
+                  value={password}
+                  onChangeText={setPassword}
                   onFocus={() => {
                     setFocusedField(passwordRef);
                     scrollToInput(passwordRef);
@@ -131,7 +165,7 @@ export default function LoginScreen() {
               </View>
               <Pressable
                 style={styles.primaryButton}
-                onPress={() => router.replace('/(tabs)')}
+                onPress={handleLogin}
                 accessibilityRole="button">
                 <Text style={styles.primaryButtonText}>로그인</Text>
               </Pressable>

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -17,11 +18,28 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Stack, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
+import { ApiClientError } from '@/services/api-client';
+import { signup } from '@/services/auth';
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiClientError) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
 
 export default function SignupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [isAgreed, setIsAgreed] = useState(false);
+  const [nickname, setNickname] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const nicknameRef = useRef<TextInput | null>(null);
   const emailRef = useRef<TextInput | null>(null);
@@ -69,6 +87,32 @@ export default function SignupScreen() {
     [insets.bottom],
   );
 
+  const handleSubmit = useCallback(async () => {
+    if (isSubmitting) return;
+    if (!isAgreed) {
+      Alert.alert('안내', '약관에 동의해 주세요.');
+      return;
+    }
+    if (!nickname.trim() || !email.trim() || !password) {
+      Alert.alert('안내', '닉네임, 이메일, 비밀번호를 모두 입력해 주세요.');
+      return;
+    }
+    if (password !== passwordConfirm) {
+      Alert.alert('안내', '비밀번호가 서로 다릅니다.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await signup({ email: email.trim(), password, nickname: nickname.trim() });
+      router.replace('/login');
+    } catch (error) {
+      Alert.alert('안내', getErrorMessage(error, '회원가입에 실패했어요.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [email, isAgreed, isSubmitting, nickname, password, passwordConfirm, router]);
+
   return (
     <KeyboardAvoidingView
       style={styles.keyboardAvoidingView}
@@ -92,6 +136,8 @@ export default function SignupScreen() {
                 <Text style={styles.label}>닉네임</Text>
                 <TextInput
                   ref={nicknameRef}
+                  value={nickname}
+                  onChangeText={setNickname}
                   placeholder="닉네임을 입력해주세요"
                   placeholderTextColor={Palette.textSecondary}
                   returnKeyType="next"
@@ -108,6 +154,8 @@ export default function SignupScreen() {
                 <Text style={styles.label}>아이디(이메일)</Text>
                 <TextInput
                   ref={emailRef}
+                  value={email}
+                  onChangeText={setEmail}
                   placeholder="example@iveread.app"
                   placeholderTextColor={Palette.textSecondary}
                   returnKeyType="next"
@@ -126,6 +174,8 @@ export default function SignupScreen() {
                 <Text style={styles.label}>비밀번호</Text>
                 <TextInput
                   ref={passwordRef}
+                  value={password}
+                  onChangeText={setPassword}
                   placeholder="비밀번호를 입력하세요"
                   placeholderTextColor={Palette.textSecondary}
                   returnKeyType="next"
@@ -144,6 +194,8 @@ export default function SignupScreen() {
                 <Text style={styles.label}>비밀번호 확인</Text>
                 <TextInput
                   ref={passwordConfirmRef}
+                  value={passwordConfirm}
+                  onChangeText={setPasswordConfirm}
                   placeholder="비밀번호를 다시 입력하세요"
                   placeholderTextColor={Palette.textSecondary}
                   returnKeyType="done"
@@ -172,10 +224,12 @@ export default function SignupScreen() {
 
               <Pressable
                 style={[styles.primaryButton, !isAgreed && styles.primaryButtonDisabled]}
-                onPress={() => router.replace('/login')}
-                disabled={!isAgreed}
+                onPress={handleSubmit}
+                disabled={!isAgreed || isSubmitting}
                 accessibilityRole="button">
-                <Text style={styles.primaryButtonText}>회원가입 완료</Text>
+                <Text style={styles.primaryButtonText}>
+                  {isSubmitting ? '가입 중...' : '회원가입 완료'}
+                </Text>
               </Pressable>
               <Pressable
                 style={styles.secondaryButton}

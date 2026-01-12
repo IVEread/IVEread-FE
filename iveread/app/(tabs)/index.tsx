@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Keyboard,
@@ -11,13 +11,17 @@ import {
   TextInput,
   TouchableWithoutFeedback,
   View,
+  type ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Palette, Shadows, Typography } from '@/constants/ui';
-import { useReadingClubs } from '@/contexts/reading-clubs-context';
+import { ApiClientError } from '@/services/api-client';
+import { searchBooks } from '@/services/books';
+import { getGroups } from '@/services/groups';
+import type { Group } from '@/types/group';
 
 const completedBooks = [
   {
@@ -46,32 +50,135 @@ const completedBooks = [
   },
 ];
 // 추후 백엔드 연동 후 DB 연결
+type LoadState = 'loading' | 'success' | 'error';
+
+type GroupCard = {
+  id: string;
+  groupName: string;
+  title: string;
+  author: string;
+  tag: string;
+  tags: string[];
+  lastActive: string;
+  cover: ImageSourcePropType;
+};
+
+const formatRelativeTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const diff = Math.max(0, Date.now() - date.getTime());
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return '방금';
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  return `${days}일 전`;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiClientError) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
+
+const mapGroupToCard = async (group: Group): Promise<GroupCard> => {
+  let author = '';
+  let tag = '';
+  let tags: string[] = [];
+  let cover: ImageSourcePropType = { uri: group.bookCover };
+
+  try {
+    const search = await searchBooks(group.bookTitle, 1, 1);
+    const book = search.items[0];
+    if (book) {
+      author = book.author;
+      tag = book.publisher;
+      tags = book.publisher ? [book.publisher] : [];
+      if (book.coverImage) {
+        cover = { uri: book.coverImage };
+      }
+    }
+  } catch {
+    // ignore search errors; fallback to group data only
+  }
+
+  return {
+    id: group.id,
+    groupName: group.name,
+    title: group.bookTitle,
+    author,
+    tag,
+    tags,
+    lastActive: formatRelativeTime(String(group.createdAt)),
+    cover,
+  };
+};
 export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('전체');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [groupCards, setGroupCards] = useState<GroupCard[]>([]);
+  const [groupStatus, setGroupStatus] = useState<LoadState>('loading');
+  const [groupError, setGroupError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
-  const { clubs } = useReadingClubs();
   const heroIllustration = require('../../assets/images/image-Photoroom1.png');
 
   const tagOptions = useMemo(() => {
     const tagSet = new Set<string>();
-    clubs.forEach((club) => {
+    groupCards.forEach((club) => {
       club.tags.forEach((tag) => tagSet.add(tag));
     });
     return ['전체', ...Array.from(tagSet)];
-  }, [clubs]);
+  }, [groupCards]);
 
   const filteredClubs = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
-    const filtered = clubs.filter((club) => {
+    const filtered = groupCards.filter((club) => {
       const titleMatch = club.title.toLowerCase().includes(keyword);
       const groupMatch = club.groupName.toLowerCase().includes(keyword);
       const tagMatch = selectedTag === '전체' || club.tags.includes(selectedTag);
       return (titleMatch || groupMatch || !keyword) && tagMatch;
     });
     return filtered;
-  }, [searchQuery, selectedTag]);
+  }, [groupCards, searchQuery, selectedTag]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const load = async () => {
+      setGroupStatus('loading');
+      setGroupError(null);
+      try {
+        const groups = await getGroups();
+        const cards = await Promise.all(groups.map((group) => mapGroupToCard(group)));
+        if (!isActive) return;
+        setGroupCards(cards);
+        setGroupStatus('success');
+      } catch (error) {
+        if (!isActive) return;
+        setGroupCards([]);
+        setGroupStatus('error');
+        setGroupError(getErrorMessage(error, '교환독서 목록을 불러오지 못했어요.'));
+      }
+    };
+
+    load();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedTag !== '전체' && !tagOptions.includes(selectedTag)) {
+      setSelectedTag('전체');
+    }
+  }, [selectedTag, tagOptions]);
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 140 + insets.bottom }],
     [insets.bottom],
@@ -145,7 +252,11 @@ export default function HomeScreen() {
                   );
                 })}
               </ScrollView>
-              <Text style={styles.searchHint}>검색 결과 {filteredClubs.length}개</Text>
+              <Text style={styles.searchHint}>
+                {groupStatus === 'loading'
+                  ? '검색 결과 불러오는 중'
+                  : `검색 결과 ${filteredClubs.length}개`}
+              </Text>
             </View>
           </View>
         )}
@@ -155,30 +266,40 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>진행 중인 교환독서</Text>
             <Text style={styles.sectionMeta}>진행 중</Text>
           </View>
-          {filteredClubs.map((club) => (
-            <Link key={club.id} href={`/book/${club.id}`} asChild>
-              <Pressable style={styles.card} accessibilityRole="button">
-                <Image source={club.cover} style={styles.cardIcon} />
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle}>{club.title}</Text>
-                  <View style={styles.cardMetaRow}>
-                    <Text style={styles.cardMeta}>{club.groupName}</Text>
-                    <Text style={styles.cardMetaDivider}>·</Text>
-                    <Text style={styles.cardMeta}>{club.lastActive}</Text>
+          {groupStatus === 'loading' ? (
+            <Text style={styles.emptyText}>교환독서를 불러오는 중...</Text>
+          ) : groupStatus === 'error' ? (
+            <Text style={styles.emptyText}>
+              {groupError ?? '교환독서를 불러올 수 없어요.'}
+            </Text>
+          ) : filteredClubs.length === 0 ? (
+            <Text style={styles.emptyText}>진행 중인 교환독서가 없어요.</Text>
+          ) : (
+            filteredClubs.map((club) => (
+              <Link key={club.id} href={`/book/${club.id}`} asChild>
+                <Pressable style={styles.card} accessibilityRole="button">
+                  <Image source={club.cover} style={styles.cardIcon} />
+                  <View style={styles.cardBody}>
+                    <Text style={styles.cardTitle}>{club.title}</Text>
+                    <View style={styles.cardMetaRow}>
+                      <Text style={styles.cardMeta}>{club.groupName}</Text>
+                      <Text style={styles.cardMetaDivider}>·</Text>
+                      <Text style={styles.cardMeta}>{club.lastActive}</Text>
+                    </View>
+                    <Text style={styles.cardMeta}>{club.author}</Text>
+                    <Text style={styles.cardTag}>{club.tag}</Text>
+                    <View style={styles.cardTagRow}>
+                      {club.tags.map((tag) => (
+                        <View key={tag} style={styles.cardTagChip}>
+                          <Text style={styles.cardTagText}>#{tag}</Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
-                  <Text style={styles.cardMeta}>{club.author}</Text>
-                  <Text style={styles.cardTag}>{club.tag}</Text>
-                  <View style={styles.cardTagRow}>
-                    {club.tags.map((tag) => (
-                      <View key={tag} style={styles.cardTagChip}>
-                        <Text style={styles.cardTagText}>#{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              </Pressable>
-            </Link>
-          ))}
+                </Pressable>
+              </Link>
+            ))
+          )}
         </View>
 
         <View style={styles.section}>
@@ -275,6 +396,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sectionMeta: {
+    fontSize: 12,
+    color: Palette.textTertiary,
+  },
+  emptyText: {
+    marginTop: 8,
     fontSize: 12,
     color: Palette.textTertiary,
   },

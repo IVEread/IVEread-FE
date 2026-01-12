@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -16,6 +16,7 @@ import {
   useWindowDimensions,
   View,
   type DimensionValue,
+  type ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -24,80 +25,24 @@ import * as ImagePicker from 'expo-image-picker';
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { getPersonEmoji } from '@/constants/people';
 import { useProfile } from '@/contexts/profile-context';
-
-const bookDetails = {
-  '1984': {
-    title: '1984',
-    author: '조지 오웰',
-    tag: '고전 소설',
-  },
-  sapiens: {
-    title: '사피엔스',
-    author: '유발 하라리',
-    tag: '인문학',
-  },
-  gatsby: {
-    title: '위대한 개츠비',
-    author: 'F. 스콧 피츠제럴드',
-    tag: '미국 문학',
-  },
-  demian: {
-    title: '데미안',
-    author: '헤르만 헤세',
-    tag: '성장 소설',
-  },
-  bird: {
-    title: '어린왕자',
-    author: '앙투안 드 생텍쥐페리',
-    tag: '우화',
-  },
-  death: {
-    title: '총, 균, 쇠',
-    author: '재레드 다이아몬드',
-    tag: '문명사',
-  },
-  cosmos: {
-    title: '코스모스',
-    author: '칼 세이건',
-    tag: '과학',
-  },
-} as const;
-
-type BookId = keyof typeof bookDetails;
-
-const highlightSentencesSeed = [
-  {
-    id: 'p45',
-    page: 'p. 45',
-    text: '“전쟁은 평화, 자유는 예속, 무지는 힘이다.”',
-    name: '지민',
-    replies: [
-      { id: 'r-1', name: '서준', time: '1시간 전', text: '이 문장 진짜 소름...' },
-    ],
-  },
-  {
-    id: 'p89',
-    page: 'p. 89',
-    text: '“빅 브라더가 당신을 지켜보고 있다.”',
-    name: '서준',
-    replies: [],
-  },
-  {
-    id: 'p156',
-    page: 'p. 156',
-    text: '“과거를 지배하는 자가 미래를 지배하고, 현재를 지배하는 자가 과거를 지배한다.”',
-    name: '나',
-    replies: [],
-  },
-];
-// 추후 백엔드 연동 시 DB 반영 예정
-
-const gallerySeed = [
-  require('../../assets/images/react-logo.png'),
-  require('../../assets/images/partial-react-logo.png'),
-  require('../../assets/images/icon.png'),
-  require('../../assets/images/splash-icon.png'),
-];
+import { ApiClientError } from '@/services/api-client';
+import { getBookByIsbn, searchBooks } from '@/services/books';
+import { getGroup, getGroups } from '@/services/groups';
+import {
+  createRecordComment,
+  getGroupRecords,
+  getRecordComments,
+  getRecordReactions,
+} from '@/services/records';
+import {
+  createSentence,
+  createSentenceComment,
+  getGroupSentences,
+  getSentenceComments,
+} from '@/services/sentences';
+import { getUserId } from '@/services/session';
+import type { Book } from '@/types/book';
+import type { Group } from '@/types/group';
 
 const dayKeyOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
@@ -126,54 +71,79 @@ const getWeekDateKeys = (baseDate: Date) => {
   });
 };
 
-const getDateKeyOffset = (offset: number) => {
-  const date = new Date();
-  date.setDate(date.getDate() + offset);
-  return formatDateKey(date);
+type LoadState = 'idle' | 'loading' | 'success' | 'error';
+
+type SentenceReply = {
+  id: string;
+  name: string;
+  time: string;
+  text: string;
 };
 
-const feedSeed = [
-  {
-    id: 'feed-1',
-    name: '서준',
-    time: '2시간 전',
-    image: gallerySeed[0],
-    caption: '오늘은 3장까지 읽고 핵심 문장을 정리했어요.',
-    likes: 4,
-    comments: [{ id: 'fc-1', name: '서준', time: '2시간 전', text: '문장 공유해줘!' }],
-    createdAt: getDateKeyOffset(-3),
-  },
-  {
-    id: 'feed-2',
-    name: '지민',
-    time: '어제',
-    image: gallerySeed[1],
-    caption: '모임 전에 밑줄친 문장 다시 읽기.',
-    likes: 2,
-    comments: [],
-    createdAt: getDateKeyOffset(-2),
-  },
-  {
-    id: 'feed-3',
-    name: '나',
-    time: '방금',
-    image: gallerySeed[2],
-    caption: '오늘 기록 완료. 다음 주는 4장까지!',
-    likes: 6,
-    comments: [{ id: 'fc-2', name: '지민', time: '방금', text: '고생했어!' }],
-    createdAt: getDateKeyOffset(-1),
-  },
-  {
-    id: 'feed-4',
-    name: '민지',
-    time: '3일 전',
-    image: gallerySeed[3],
-    caption: '독서 인증샷 📚',
-    likes: 1,
-    comments: [],
-    createdAt: getDateKeyOffset(0),
-  },
-];
+type SentenceItem = {
+  id: string;
+  page: string;
+  text: string;
+  name: string;
+  replies: SentenceReply[];
+  source: 'remote' | 'local';
+};
+
+type FeedComment = {
+  id: string;
+  name: string;
+  time: string;
+  text: string;
+};
+
+type FeedItem = {
+  id: string;
+  name: string;
+  time: string;
+  image: ImageSourcePropType;
+  caption: string;
+  likes: number;
+  comments: FeedComment[];
+  createdAt: string;
+  recordId?: string;
+  source: 'remote' | 'local';
+};
+
+const formatDisplayDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}.${month}.${day}`;
+};
+
+const formatRelativeTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const diff = Math.max(0, Date.now() - date.getTime());
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return '방금';
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  return `${days}일 전`;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiClientError) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
+
+const isNotFoundError = (error: unknown) =>
+  error instanceof ApiClientError && error.status === 404;
 
 const weeklyStampConfig = [
   {
@@ -238,22 +208,29 @@ export default function BookDetailScreen() {
   const router = useRouter();
   const { profile } = useProfile();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const defaultId: BookId = '1984';
-  const bookId = (id && id in bookDetails ? (id as BookId) : defaultId);
-  const detail = bookDetails[bookId];
-  const [sentences, setSentences] = useState<typeof highlightSentencesSeed>(highlightSentencesSeed);
+  const routeId = typeof id === 'string' ? id : undefined;
+  const [book, setBook] = useState<Book | null>(null);
+  const [bookStatus, setBookStatus] = useState<LoadState>('loading');
+  const [bookError, setBookError] = useState<string | null>(null);
+  const [group, setGroup] = useState<Group | null>(null);
+  const [groupStatus, setGroupStatus] = useState<LoadState>('loading');
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [sentences, setSentences] = useState<SentenceItem[]>([]);
+  const [sentencesStatus, setSentencesStatus] = useState<LoadState>('loading');
+  const [sentencesError, setSentencesError] = useState<string | null>(null);
   const [isAddingSentence, setIsAddingSentence] = useState(false);
   const [sentenceText, setSentenceText] = useState('');
   const [sentencePage, setSentencePage] = useState('');
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
   const [openReplyId, setOpenReplyId] = useState<string | null>(null);
-  const [feedItems, setFeedItems] = useState<typeof feedSeed>(feedSeed);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [feedStatus, setFeedStatus] = useState<LoadState>('loading');
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadCaption, setUploadCaption] = useState('');
-  const [selectedUploadImage, setSelectedUploadImage] = useState<(typeof gallerySeed)[number] | null>(
-    null,
-  );
+  const [selectedUploadImage, setSelectedUploadImage] = useState<ImageSourcePropType | null>(null);
   const [selectedUploadUri, setSelectedUploadUri] = useState<string | null>(null);
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [feedCommentText, setFeedCommentText] = useState('');
@@ -320,40 +297,398 @@ export default function BookDetailScreen() {
   const stampItemWidth = 64;
   const stampRowOffset = 80;
 
-  const handleAddSentence = () => {
-    if (!sentenceText.trim()) {
+  useEffect(() => {
+    let isActive = true;
+
+    const load = async () => {
+      if (!routeId) {
+        if (!isActive) return;
+        setBook(null);
+        setBookStatus('error');
+        setBookError('도서 정보를 불러올 수 없어요.');
+        setGroup(null);
+        setGroupStatus('error');
+        setGroupError('교환독서 정보를 불러올 수 없어요.');
+        setGroupId(null);
+        return;
+      }
+
+      setBook(null);
+      setBookStatus('loading');
+      setBookError(null);
+      setGroup(null);
+      setGroupStatus('loading');
+      setGroupError(null);
+      setGroupId(null);
+
+      let resolvedGroup: Group | null = null;
+      let resolvedBook: Book | null = null;
+      let groupMessage: string | null = null;
+      let bookMessage: string | null = null;
+
+      try {
+        resolvedGroup = await getGroup(routeId);
+      } catch (error) {
+        if (!isNotFoundError(error)) {
+          groupMessage = getErrorMessage(error, '교환독서 정보를 불러오지 못했어요.');
+        }
+      }
+
+      try {
+        resolvedBook = await getBookByIsbn(routeId);
+      } catch (error) {
+        if (!isNotFoundError(error)) {
+          bookMessage = getErrorMessage(error, '도서 정보를 불러오지 못했어요.');
+        }
+      }
+
+      if (!resolvedBook && resolvedGroup?.bookTitle) {
+        try {
+          const search = await searchBooks(resolvedGroup.bookTitle, 1, 5);
+          const match =
+            search.items.find((item) => item.title === resolvedGroup?.bookTitle) ?? search.items[0];
+          if (match) {
+            try {
+              resolvedBook = await getBookByIsbn(match.isbn);
+            } catch (error) {
+              resolvedBook = match;
+              if (!bookMessage && !isNotFoundError(error)) {
+                bookMessage = getErrorMessage(error, '도서 정보를 불러오지 못했어요.');
+              }
+            }
+          }
+        } catch (error) {
+          if (!bookMessage) {
+            bookMessage = getErrorMessage(error, '도서 정보를 불러오지 못했어요.');
+          }
+        }
+      }
+
+      if (!resolvedGroup && resolvedBook) {
+        try {
+          const groups = await getGroups();
+          resolvedGroup = groups.find((item) => item.bookTitle === resolvedBook?.title) ?? null;
+        } catch (error) {
+          if (!groupMessage) {
+            groupMessage = getErrorMessage(error, '교환독서 정보를 불러오지 못했어요.');
+          }
+        }
+      }
+
+      if (!isActive) return;
+
+      if (resolvedBook) {
+        setBook(resolvedBook);
+        setBookStatus('success');
+        setBookError(null);
+      } else {
+        setBook(null);
+        setBookStatus('error');
+        setBookError(bookMessage ?? '도서 정보를 찾을 수 없어요.');
+      }
+
+      if (resolvedGroup) {
+        setGroup(resolvedGroup);
+        setGroupStatus('success');
+        setGroupError(null);
+        setGroupId(resolvedGroup.id);
+      } else {
+        setGroup(null);
+        setGroupStatus('error');
+        setGroupError(groupMessage ?? '교환독서 정보를 찾을 수 없어요.');
+        setGroupId(null);
+      }
+    };
+
+    load();
+
+    return () => {
+      isActive = false;
+    };
+  }, [routeId]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const load = async () => {
+      if (!groupId) {
+        if (!isActive) return;
+        setSentences([]);
+        setFeedItems([]);
+        setSelectedPostId(null);
+        setOpenReplyId(null);
+        setReplyInputs({});
+        setFeedCommentText('');
+        if (groupStatus === 'loading') {
+          setSentencesStatus('loading');
+          setSentencesError(null);
+          setFeedStatus('loading');
+          setFeedError(null);
+        } else {
+          setSentencesStatus('error');
+          setSentencesError('교환독서 정보를 불러올 수 없어요.');
+          setFeedStatus('error');
+          setFeedError('독서 기록을 불러올 수 없어요.');
+        }
+        return;
+      }
+
+      setSentences([]);
+      setSentencesStatus('loading');
+      setSentencesError(null);
+      setFeedItems([]);
+      setFeedStatus('loading');
+      setFeedError(null);
+      setSelectedPostId(null);
+      setOpenReplyId(null);
+      setReplyInputs({});
+      setFeedCommentText('');
+
+      const userId = await getUserId();
+
+      const loadSentences = async () => {
+        try {
+          const data = await getGroupSentences(groupId);
+          const sorted = [...data].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          );
+          const mapped = await Promise.all(
+            sorted.map(async (sentence): Promise<SentenceItem> => {
+              let replies: SentenceReply[] = [];
+              try {
+                const comments = await getSentenceComments(sentence.id);
+                replies = comments.map((comment) => ({
+                  id: comment.id,
+                  name: comment.userNickname,
+                  time: formatRelativeTime(String(comment.createdAt)),
+                  text: comment.content,
+                }));
+              } catch {
+                replies = [];
+              }
+              return {
+                id: sentence.id,
+                page: `p. ${sentence.pageNo}`,
+                text: sentence.content,
+                name: sentence.userNickname,
+                replies,
+                source: 'remote',
+              };
+            }),
+          );
+
+          if (!isActive) return;
+          setSentences(mapped);
+          setSentencesStatus('success');
+          setSentencesError(null);
+        } catch (error) {
+          if (!isActive) return;
+          setSentences([]);
+          setSentencesStatus('error');
+          setSentencesError(getErrorMessage(error, '문장을 불러오지 못했어요.'));
+        }
+      };
+
+      const loadRecords = async () => {
+        try {
+          const records = await getGroupRecords(groupId);
+          const sorted = [...records].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          );
+          const likedSet = new Set<string>();
+          const mapped = await Promise.all(
+            sorted.map(async (record): Promise<FeedItem> => {
+              let comments: FeedComment[] = [];
+              let reactionsCount = 0;
+              let reactionsByUser = false;
+
+              try {
+                const recordComments = await getRecordComments(record.id);
+                comments = recordComments.map((comment) => ({
+                  id: comment.id,
+                  name: comment.userNickname,
+                  time: formatRelativeTime(String(comment.createdAt)),
+                  text: comment.content,
+                }));
+              } catch {
+                comments = [];
+              }
+
+              try {
+                const reactions = await getRecordReactions(record.id);
+                reactionsCount = reactions.length;
+                if (userId) {
+                  reactionsByUser = reactions.some((reaction) => reaction.userId === userId);
+                }
+              } catch {
+                reactionsCount = 0;
+              }
+
+              if (reactionsByUser) {
+                likedSet.add(record.id);
+              }
+
+              const readDate = new Date(record.readDate);
+              const createdDate = Number.isNaN(readDate.getTime())
+                ? new Date(record.createdAt)
+                : readDate;
+
+              return {
+                id: record.id,
+                recordId: record.id,
+                name: record.userNickname,
+                time: formatRelativeTime(String(record.createdAt)),
+                image: { uri: record.imageUrl },
+                caption: record.comment ?? '',
+                likes: reactionsCount,
+                comments,
+                createdAt: formatDateKey(createdDate),
+                source: 'remote',
+              };
+            }),
+          );
+
+          if (!isActive) return;
+          setFeedItems(mapped);
+          setFeedStatus('success');
+          setFeedError(null);
+          setLikedPostIds(likedSet);
+        } catch (error) {
+          if (!isActive) return;
+          setFeedItems([]);
+          setFeedStatus('error');
+          setFeedError(getErrorMessage(error, '독서 기록을 불러오지 못했어요.'));
+        }
+      };
+
+      await Promise.all([loadSentences(), loadRecords()]);
+    };
+
+    load();
+
+    return () => {
+      isActive = false;
+    };
+  }, [groupId, groupStatus]);
+
+  const bookTitle =
+    book?.title ?? group?.bookTitle ?? (bookStatus === 'loading' ? '불러오는 중...' : '');
+  const bookAuthor = book?.author ?? '';
+  const bookTag = book?.publisher ?? '';
+  const bookCoverSource = useMemo<ImageSourcePropType | null>(() => {
+    if (book?.coverImage) {
+      return { uri: book.coverImage };
+    }
+    if (group?.bookCover) {
+      return { uri: group.bookCover };
+    }
+    return null;
+  }, [book?.coverImage, group?.bookCover]);
+
+  const groupStartDate = group?.startDate ? formatDisplayDate(group.startDate) : null;
+  const groupGoalDate = group?.goalDate ? formatDisplayDate(group.goalDate) : null;
+  const memberAvatarCount = group?.memberCount ? Math.min(group.memberCount, 5) : 0;
+
+  const handleAddSentence = async () => {
+    const trimmedText = sentenceText.trim();
+    const trimmedPage = sentencePage.trim();
+
+    if (!trimmedText) {
       Alert.alert('안내', '문장을 입력해 주세요.');
       return;
     }
-    const pageLabel = sentencePage.trim() ? `p. ${sentencePage.trim()}` : 'p. ?';
-    setSentences((prev) => [
-      { id: `p-${Date.now()}`, page: pageLabel, text: sentenceText.trim(), name: '나', replies: [] },
-      ...prev,
-    ]);
-    setSentenceText('');
-    setSentencePage('');
-    setIsAddingSentence(false);
+    if (!trimmedPage) {
+      Alert.alert('안내', '페이지를 입력해 주세요.');
+      return;
+    }
+    const pageNo = Number(trimmedPage);
+    if (!Number.isFinite(pageNo)) {
+      Alert.alert('안내', '올바른 페이지 번호를 입력해 주세요.');
+      return;
+    }
+    if (!groupId || !book?.isbn) {
+      Alert.alert('안내', '교환독서 정보를 불러온 뒤 등록할 수 있어요.');
+      return;
+    }
+
+    try {
+      const created = await createSentence(groupId, {
+        content: trimmedText,
+        pageNo,
+        bookIsbn: book.isbn,
+      });
+      const nextItem: SentenceItem = {
+        id: created.id,
+        page: `p. ${created.pageNo}`,
+        text: created.content,
+        name: created.userNickname,
+        replies: [],
+        source: 'remote',
+      };
+      setSentences((prev) => [nextItem, ...prev]);
+      setSentencesStatus('success');
+      setSentencesError(null);
+      setSentenceText('');
+      setSentencePage('');
+      setIsAddingSentence(false);
+    } catch (error) {
+      Alert.alert('안내', getErrorMessage(error, '문장 등록에 실패했어요.'));
+    }
   };
 
-  const handleAddReply = (sentenceId: string) => {
+  const handleAddReply = async (sentenceId: string) => {
     const message = replyInputs[sentenceId]?.trim();
     if (!message) {
       Alert.alert('안내', '답글을 입력해 주세요.');
       return;
     }
-    setSentences((prev) =>
-      prev.map((sentence) =>
-        sentence.id === sentenceId
-          ? {
-              ...sentence,
-              replies: [
-                ...(sentence.replies ?? []),
-                { id: `r-${Date.now()}`, name: '나', time: '방금', text: message },
-              ],
-            }
-          : sentence,
-      ),
-    );
+
+    const target = sentences.find((sentence) => sentence.id === sentenceId);
+    if (!target) {
+      return;
+    }
+
+    if (target.source === 'remote') {
+      try {
+        const created = await createSentenceComment(sentenceId, { content: message });
+        setSentences((prev) =>
+          prev.map((sentence) =>
+            sentence.id === sentenceId
+              ? {
+                  ...sentence,
+                  replies: [
+                    ...(sentence.replies ?? []),
+                    {
+                      id: created.id,
+                      name: created.userNickname,
+                      time: formatRelativeTime(String(created.createdAt)),
+                      text: created.content,
+                    },
+                  ],
+                }
+              : sentence,
+          ),
+        );
+      } catch (error) {
+        Alert.alert('안내', getErrorMessage(error, '답글 등록에 실패했어요.'));
+        return;
+      }
+    } else {
+      setSentences((prev) =>
+        prev.map((sentence) =>
+          sentence.id === sentenceId
+            ? {
+                ...sentence,
+                replies: [
+                  ...(sentence.replies ?? []),
+                  { id: `r-${Date.now()}`, name: '나', time: '방금', text: message },
+                ],
+              }
+            : sentence,
+        ),
+      );
+    }
+
     setReplyInputs((prev) => ({ ...prev, [sentenceId]: '' }));
     setOpenReplyId(null);
   };
@@ -381,16 +716,28 @@ export default function BookDetailScreen() {
 
               <View style={styles.bookCard}>
                 <View style={styles.bookCover}>
-                  <Text style={styles.bookCoverText}>표지</Text>
+                  {bookCoverSource ? (
+                    <Image source={bookCoverSource} style={styles.bookCoverImage} />
+                  ) : (
+                    <Text style={styles.bookCoverText}>
+                      {bookStatus === 'loading' ? '불러오는 중' : '표지'}
+                    </Text>
+                  )}
                 </View>
                 <View style={styles.bookInfo}>
                   <View style={styles.bookTitleRow}>
-                    <Text style={styles.bookTitle}>{detail.title}</Text>
-                    <View style={styles.bookTagInline}>
-                      <Text style={styles.bookTagText}>{detail.tag}</Text>
-                    </View>
+                    <Text style={styles.bookTitle}>{bookTitle}</Text>
+                    {bookTag ? (
+                      <View style={styles.bookTagInline}>
+                        <Text style={styles.bookTagText}>{bookTag}</Text>
+                      </View>
+                    ) : null}
                   </View>
-                  <Text style={styles.bookAuthor}>{detail.author}</Text>
+                  {bookStatus === 'error' && bookError ? (
+                    <Text style={styles.emptyText}>{bookError}</Text>
+                  ) : bookAuthor ? (
+                    <Text style={styles.bookAuthor}>{bookAuthor}</Text>
+                  ) : null}
                 </View>
               </View>
             </>
@@ -402,34 +749,42 @@ export default function BookDetailScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>교환독서 정보</Text>
               <View style={styles.infoCard}>
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>시작일</Text>
-                  <Text style={styles.infoValue}>2024.01.03 시작</Text>
-                </View>
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>목표일</Text>
-                  <Text style={styles.infoValue}>2024.02.15 까지</Text>
-                </View>
-                <View style={styles.memberRow}>
-                  <View style={styles.memberAvatarStack}>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberInitial}>{getEmojiForName('나')}</Text>
+                {groupStatus === 'loading' ? (
+                  <Text style={styles.emptyText}>정보를 불러오는 중...</Text>
+                ) : groupStatus === 'error' ? (
+                  <Text style={styles.emptyText}>
+                    {groupError ?? '교환독서 정보를 불러올 수 없어요.'}
+                  </Text>
+                ) : group ? (
+                  <>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>시작일</Text>
+                      <Text style={styles.infoValue}>
+                        {groupStartDate ? `${groupStartDate} 시작` : '-'}
+                      </Text>
                     </View>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberInitial}>{getEmojiForName('지민')}</Text>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>목표일</Text>
+                      <Text style={styles.infoValue}>
+                        {groupGoalDate ? `${groupGoalDate} 까지` : '-'}
+                      </Text>
                     </View>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberInitial}>{getEmojiForName('서준')}</Text>
+                    <View style={styles.memberRow}>
+                      <View style={styles.memberAvatarStack}>
+                        {Array.from({ length: memberAvatarCount }).map((_, index) => (
+                          <View key={`member-${index}`} style={styles.memberAvatar}>
+                            <Text style={styles.memberInitial}>{myEmoji}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      <Text style={styles.memberCount}>
+                        {group.memberCount}명이 함께 읽고 있어요
+                      </Text>
                     </View>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberInitial}>{getEmojiForName('수아')}</Text>
-                    </View>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberInitial}>{getEmojiForName('민호')}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.memberCount}>5명이 함께 읽고 있어요</Text>
-                </View>
+                  </>
+                ) : (
+                  <Text style={styles.emptyText}>교환독서 정보를 찾을 수 없어요.</Text>
+                )}
               </View>
             </View>
           );
@@ -611,7 +966,13 @@ export default function BookDetailScreen() {
                   />
                 </View>
               )}
-              {sentences.length === 0 ? (
+              {sentencesStatus === 'loading' ? (
+                <Text style={styles.emptyText}>문장을 불러오는 중...</Text>
+              ) : sentencesStatus === 'error' ? (
+                <Text style={styles.emptyText}>
+                  {sentencesError ?? '문장을 불러올 수 없어요.'}
+                </Text>
+              ) : sentences.length === 0 ? (
                 <Text style={styles.emptyText}>아직 등록된 문장이 없어요.</Text>
               ) : (
                 sentences.map((item) => (
@@ -694,38 +1055,59 @@ export default function BookDetailScreen() {
                 <Text style={styles.feedUploadText}>업로드</Text>
               </Pressable>
             </View>
-            <View style={styles.galleryGrid}>
-              {feedItems.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={[styles.galleryItem, { width: galleryCardSize }]}
-                  onPress={() => setSelectedPostId(item.id)}
-                  accessibilityRole="button">
-                  <Image source={item.image} style={styles.galleryImage} />
-                </Pressable>
-              ))}
-            </View>
+            {feedStatus === 'loading' ? (
+              <Text style={styles.emptyText}>피드를 불러오는 중...</Text>
+            ) : feedStatus === 'error' ? (
+              <Text style={styles.emptyText}>{feedError ?? '피드를 불러올 수 없어요.'}</Text>
+            ) : feedItems.length === 0 ? (
+              <Text style={styles.emptyText}>등록된 기록이 없어요.</Text>
+            ) : (
+              <View style={styles.galleryGrid}>
+                {feedItems.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    style={[styles.galleryItem, { width: galleryCardSize }]}
+                    onPress={() => setSelectedPostId(item.id)}
+                    accessibilityRole="button">
+                    <Image source={item.image} style={styles.galleryImage} />
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </View>
         );
       },
     [
       completedStampCount,
-      detail.author,
-      detail.tag,
-      detail.title,
+      bookAuthor,
+      bookCoverSource,
+      bookError,
+      bookStatus,
+      bookTag,
+      bookTitle,
       feedItems,
+      feedError,
+      feedStatus,
       galleryCardSize,
       getEmojiForName,
+      groupError,
+      groupGoalDate,
+      groupStartDate,
+      groupStatus,
       handleAddReply,
       handleAddSentence,
       insets.bottom,
       isAddingSentence,
+      myEmoji,
+      memberAvatarCount,
       openReplyId,
       replyInputs,
       router,
       sentencePage,
       sentenceText,
       sentences,
+      sentencesError,
+      sentencesStatus,
       selectedWeek,
       setIsUploadOpen,
       setOpenReplyId,
@@ -741,7 +1123,7 @@ export default function BookDetailScreen() {
       weeklyStamps,
     ],
   );
-  const gallery = useMemo(() => gallerySeed, []);
+  const gallery = useMemo(() => feedItems.map((item) => item.image), [feedItems]);
   const selectedPost = useMemo(
     () => (selectedPostId ? feedItems.find((item) => item.id === selectedPostId) ?? null : null),
     [feedItems, selectedPostId],
@@ -775,9 +1157,12 @@ export default function BookDetailScreen() {
         likes: 0,
         comments: [],
         createdAt: formatDateKey(new Date()),
+        source: 'local',
       },
       ...prev,
     ]);
+    setFeedStatus('success');
+    setFeedError(null);
     setSelectedUploadImage(null);
     setSelectedUploadUri(null);
     setUploadCaption('');
@@ -843,25 +1228,59 @@ export default function BookDetailScreen() {
   };
 
 
-  const handleAddFeedComment = () => {
+  const handleAddFeedComment = async () => {
     if (!selectedPostId || !feedCommentText.trim()) {
       Alert.alert('안내', '댓글을 입력해 주세요.');
       return;
     }
     const message = feedCommentText.trim();
-    setFeedItems((prev) =>
-      prev.map((item) =>
-        item.id === selectedPostId
-          ? {
-              ...item,
-              comments: [
-                ...(item.comments ?? []),
-                { id: `fc-${Date.now()}`, name: '나', time: '방금', text: message },
-              ],
-            }
-          : item,
-      ),
-    );
+    const target = feedItems.find((item) => item.id === selectedPostId);
+
+    if (!target) {
+      return;
+    }
+
+    if (target.source === 'remote' && target.recordId) {
+      try {
+        const created = await createRecordComment(target.recordId, { content: message });
+        setFeedItems((prev) =>
+          prev.map((item) =>
+            item.id === selectedPostId
+              ? {
+                  ...item,
+                  comments: [
+                    ...(item.comments ?? []),
+                    {
+                      id: created.id,
+                      name: created.userNickname,
+                      time: formatRelativeTime(String(created.createdAt)),
+                      text: created.content,
+                    },
+                  ],
+                }
+              : item,
+          ),
+        );
+      } catch (error) {
+        Alert.alert('안내', getErrorMessage(error, '댓글 등록에 실패했어요.'));
+        return;
+      }
+    } else {
+      setFeedItems((prev) =>
+        prev.map((item) =>
+          item.id === selectedPostId
+            ? {
+                ...item,
+                comments: [
+                  ...(item.comments ?? []),
+                  { id: `fc-${Date.now()}`, name: '나', time: '방금', text: message },
+                ],
+              }
+            : item,
+        ),
+      );
+    }
+
     setFeedCommentText('');
   };
 
@@ -1182,6 +1601,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 16,
     overflow: 'hidden',
+  },
+  bookCoverImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   bookCoverText: {
     fontSize: 12,
