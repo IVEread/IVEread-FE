@@ -28,7 +28,7 @@ import { getPersonEmoji } from '@/constants/people';
 import { useProfile } from '@/contexts/profile-context';
 import { ApiClientError } from '@/services/api-client';
 import { getBookByIsbn, searchBooks } from '@/services/books';
-import { finishGroupRead, getGroup, getGroups, leaveGroup } from '@/services/groups';
+import { finishGroupRead, getFinishedBooks, getGroup, getGroups, leaveGroup } from '@/services/groups';
 import {
   createRecord,
   createRecordComment,
@@ -252,6 +252,7 @@ export default function BookDetailScreen() {
   const [isCompleting, setIsCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadCaption, setUploadCaption] = useState('');
@@ -434,6 +435,26 @@ export default function BookDetailScreen() {
       isActiveRef.current = false;
     };
   }, [routeId]);
+
+  useEffect(() => {
+    if (!groupId) {
+      setIsFinished(false);
+      return;
+    }
+    let isActive = true;
+    getFinishedBooks()
+      .then((books) => {
+        if (!isActive) return;
+        setIsFinished(books.some((book) => book.groupId === groupId));
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setIsFinished(false);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [groupId]);
 
   useEffect(() => {
     let isActive = true;
@@ -1053,23 +1074,25 @@ export default function BookDetailScreen() {
                         {group.memberCount}명이 함께 읽고 있어요
                       </Text>
                     </View>
-                    <View style={styles.completeRow}>
-                      <Pressable
-                        style={[
-                          styles.completeButton,
-                          isCompleting && styles.completeButtonDisabled,
-                        ]}
-                        onPress={handleCompleteReading}
-                        accessibilityRole="button"
-                        disabled={isCompleting}>
-                        <Text style={styles.completeButtonText}>
-                          {isCompleting ? '완독 처리 중...' : '완독하기'}
-                        </Text>
-                      </Pressable>
-                      {completeError ? (
-                        <Text style={styles.completeErrorText}>{completeError}</Text>
-                      ) : null}
-                    </View>
+                    {!isFinished ? (
+                      <View style={styles.completeRow}>
+                        <Pressable
+                          style={[
+                            styles.completeButton,
+                            isCompleting && styles.completeButtonDisabled,
+                          ]}
+                          onPress={handleCompleteReading}
+                          accessibilityRole="button"
+                          disabled={isCompleting}>
+                          <Text style={styles.completeButtonText}>
+                            {isCompleting ? '완독 처리 중...' : '완독하기'}
+                          </Text>
+                        </Pressable>
+                        {completeError ? (
+                          <Text style={styles.completeErrorText}>{completeError}</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </>
                 ) : (
                   <Text style={styles.emptyText}>교환독서 정보를 찾을 수 없어요.</Text>

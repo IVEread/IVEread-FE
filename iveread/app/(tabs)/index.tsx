@@ -355,22 +355,28 @@ export default function HomeScreen() {
               {finishedBooks.map((item) => {
                 const finishedAt = formatDisplayDate(item.finishedAt);
                 return (
-                  <View key={item.id} style={styles.finishedCard}>
-                    {item.bookCoverImage ? (
-                      <Image source={{ uri: item.bookCoverImage }} style={styles.finishedCover} />
-                    ) : (
-                      <View style={styles.finishedCoverFallback}>
-                        <Text style={styles.finishedCoverText}>표지</Text>
+                  <Link key={item.id} href={`/book/${item.groupId}`} asChild>
+                    <Pressable style={styles.finishedCard} accessibilityRole="button">
+                      <View style={styles.finishedCoverFrame}>
+                        {item.bookCoverImage ? (
+                          <Image
+                            source={{ uri: item.bookCoverImage }}
+                            style={styles.finishedCover}
+                          />
+                        ) : (
+                          <View style={styles.finishedCoverFallback}>
+                            <Text style={styles.finishedCoverText}>📖</Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                    <View style={styles.finishedBody}>
-                      <Text style={styles.finishedTitle}>{item.bookTitle}</Text>
-                      <Text style={styles.finishedAuthor}>{item.bookAuthor}</Text>
-                      <Text style={styles.finishedDate}>
-                        {finishedAt ? `${finishedAt} 완독` : ''}
-                      </Text>
-                    </View>
-                  </View>
+                      <View style={styles.finishedBody}>
+                        <Text style={styles.finishedTitle}>{item.bookTitle}</Text>
+                        <Text style={styles.finishedDate}>
+                          {finishedAt ? `${finishedAt} 완독` : ''}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </Link>
                 );
               })}
             </ScrollView>
@@ -580,53 +586,51 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
   finishedCard: {
-    flexDirection: 'row',
-    backgroundColor: Palette.surface,
+    width: 150,
     borderRadius: 18,
-    padding: 14,
+    padding: 16,
     marginRight: 12,
     borderWidth: 1,
     borderColor: Palette.border,
+    backgroundColor: Palette.surface,
     ...Shadows.card,
   },
-  finishedCover: {
-    width: 54,
-    aspectRatio: 2 / 3,
-    borderRadius: 12,
-    marginRight: 12,
-    resizeMode: 'cover',
-    backgroundColor: Palette.accentSoft,
-  },
-  finishedCoverFallback: {
-    width: 54,
-    aspectRatio: 2 / 3,
-    borderRadius: 12,
-    marginRight: 12,
+  finishedCoverFrame: {
+    height: 120,
+    borderRadius: 18,
+    backgroundColor: '#F2F6FA',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Palette.accentSoft,
+    marginBottom: 14,
+  },
+  finishedCover: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
+    resizeMode: 'contain',
+  },
+  finishedCoverFallback: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   finishedCoverText: {
-    fontSize: 11,
+    fontSize: 24,
     color: Palette.textSecondary,
   },
   finishedBody: {
-    flex: 1,
-    justifyContent: 'center',
+    gap: 6,
   },
   finishedTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
     color: Palette.textPrimary,
-    marginBottom: 4,
-  },
-  finishedAuthor: {
-    fontSize: 12,
-    color: Palette.textSecondary,
-    marginBottom: 6,
   },
   finishedDate: {
-    fontSize: 11,
+    fontSize: 9,
     color: Palette.textTertiary,
+    fontWeight: '600',
   },
 });

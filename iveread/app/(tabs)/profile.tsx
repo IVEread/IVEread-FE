@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -9,11 +9,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
-import { useCalendarRecords } from '@/contexts/calendar-context';
 import { useFriends } from '@/contexts/friends-context';
 import { useProfile } from '@/contexts/profile-context';
+import { getFinishedBooks, getGroups } from '@/services/groups';
+import { ApiClientError } from '@/services/api-client';
 
 const profileSections = [
   { id: 'profile', title: '프로필', detail: '내 정보 수정' },
@@ -24,21 +26,31 @@ const profileSections = [
 export default function ProfileScreen() {
   const router = useRouter();
   const { profile, updateProfile } = useProfile();
-  const { recordsByOwner } = useCalendarRecords();
   const { friends } = useFriends();
+  const [activeCount, setActiveCount] = useState(0);
+  const [finishedCount, setFinishedCount] = useState(0);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const avatarLabel = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '?');
-  const myRecords = recordsByOwner.me ?? {};
-  const recordCount = useMemo(() => Object.keys(myRecords).length, [myRecords]);
-  const completedCount = useMemo(() => {
-    const titles = new Set(
-      Object.values(myRecords)
-        .map((record) => record.title)
-        .filter(Boolean)
-    );
-    return titles.size;
-  }, [myRecords]);
   const friendCount = friends.length;
+  const recordCount = activeCount;
+  const completedCount = finishedCount;
+
+  const loadCounts = useCallback(async (isActiveRef?: { current: boolean }) => {
+    try {
+      const [groups, finished] = await Promise.all([getGroups(), getFinishedBooks()]);
+      if (isActiveRef && !isActiveRef.current) return;
+      const finishedGroupIds = new Set(finished.map((item) => item.groupId));
+      setFinishedCount(finished.length);
+      setActiveCount(groups.filter((group) => !finishedGroupIds.has(group.id)).length);
+    } catch (error) {
+      if (isActiveRef && !isActiveRef.current) return;
+      const message =
+        error instanceof ApiClientError ? error.message : '프로필 정보를 불러오지 못했어요.';
+      console.warn(message);
+      setFinishedCount(0);
+      setActiveCount(0);
+    }
+  }, []);
 
   const emojiCategories = useMemo(
     () => [
@@ -144,6 +156,16 @@ export default function ProfileScreen() {
       },
     ],
     []
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const isActive = { current: true };
+      loadCounts(isActive);
+      return () => {
+        isActive.current = false;
+      };
+    }, [loadCounts]),
   );
 
   return (
