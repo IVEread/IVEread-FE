@@ -19,37 +19,12 @@ import { Link } from 'expo-router';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { ApiClientError } from '@/services/api-client';
-import { searchBooks } from '@/services/books';
+import { getBookByIsbn, searchBooks } from '@/services/books';
 import { getGroups } from '@/services/groups';
 import type { Group } from '@/types/group';
 
-const completedBooks = [
-  {
-    id: 'demian',
-    title: '데미안',
-    date: '2023.11 완독',
-    cover: require('../../assets/images/icon.png'),
-  },
-  {
-    id: 'bird',
-    title: '어린왕자',
-    date: '2023.09 ~ 2023.08',
-    cover: require('../../assets/images/react-logo.png'),
-  },
-  {
-    id: 'death',
-    title: '총, 균, 쇠',
-    date: '2023.10 완독',
-    cover: require('../../assets/images/partial-react-logo.png'),
-  },
-  {
-    id: 'cosmos',
-    title: '코스모스',
-    date: '2023.07 완독',
-    cover: require('../../assets/images/splash-icon.png'),
-  },
-];
-// 추후 백엔드 연동 후 DB 연결
+const FALLBACK_AUTHOR = '지은이 정보 없음';
+const FALLBACK_PUBLISHER = '출판사 정보 없음';
 type LoadState = 'loading' | 'success' | 'error';
 
 type GroupCard = {
@@ -87,24 +62,34 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 };
 
 const mapGroupToCard = async (group: Group): Promise<GroupCard> => {
-  let author = '';
-  let tag = '';
+  let author = FALLBACK_AUTHOR;
+  let tag = FALLBACK_PUBLISHER;
   let tags: string[] = [];
   let cover: ImageSourcePropType = { uri: group.bookCover };
 
   try {
-    const search = await searchBooks(group.bookTitle, 1, 1);
-    const book = search.items[0];
-    if (book) {
-      author = book.author;
-      tag = book.publisher;
-      tags = book.publisher ? [book.publisher] : [];
-      if (book.coverImage) {
-        cover = { uri: book.coverImage };
-      }
+    const book = await getBookByIsbn(group.bookIsbn);
+    author = book.author || FALLBACK_AUTHOR;
+    tag = book.publisher || FALLBACK_PUBLISHER;
+    tags = book.publisher ? [book.publisher] : [];
+    if (book.coverImage) {
+      cover = { uri: book.coverImage };
     }
   } catch {
-    // ignore search errors; fallback to group data only
+    try {
+      const search = await searchBooks(group.bookTitle, 1, 1);
+      const book = search.items[0];
+      if (book) {
+        author = book.author || FALLBACK_AUTHOR;
+        tag = book.publisher || FALLBACK_PUBLISHER;
+        tags = book.publisher ? [book.publisher] : [];
+        if (book.coverImage) {
+          cover = { uri: book.coverImage };
+        }
+      }
+    } catch {
+      // ignore search errors; fallback to group data only
+    }
   }
 
   return {
@@ -302,25 +287,6 @@ export default function HomeScreen() {
           )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>완독한 책</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.completedRow}>
-            {completedBooks.map((book) => (
-              <Link key={book.id} href={`/book/${book.id}`} asChild>
-                <Pressable style={styles.completedCard} accessibilityRole="button">
-                  <Image source={book.cover} style={styles.completedCover} />
-                  <View style={styles.completedMeta}>
-                    <Text style={styles.completedTitle}>{book.title}</Text>
-                    <Text style={styles.completedDate}>{book.date}</Text>
-                  </View>
-                </Pressable>
-              </Link>
-            ))}
-          </ScrollView>
-        </View>
           </ScrollView>
         </SafeAreaView>
       </TouchableWithoutFeedback>
@@ -519,39 +485,5 @@ const styles = StyleSheet.create({
   cardTagText: {
     fontSize: 11,
     color: Palette.accent,
-  },
-  completedRow: {
-    paddingRight: 6,
-  },
-  completedCard: {
-    width: 160,
-    height: 220,
-    backgroundColor: Palette.surface,
-    borderRadius: 16,
-    padding: 12,
-    marginRight: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Palette.border,
-  },
-  completedCover: {
-    flex: 1,
-    width: '100%',
-    borderRadius: 14,
-    backgroundColor: Palette.accentSoft,
-    resizeMode: 'cover',
-  },
-  completedMeta: {
-    width: '100%',
-    marginTop: 10,
-  },
-  completedTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Palette.textPrimary,
-  },
-  completedDate: {
-    ...Typography.caption,
-    marginTop: 6,
   },
 });
