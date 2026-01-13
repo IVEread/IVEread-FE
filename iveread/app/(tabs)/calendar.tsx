@@ -26,11 +26,14 @@ export default function CalendarScreen() {
         name: '나',
         emoji: profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊'),
       },
-      ...friends.map((friend) => ({
-        id: friend.email,
-        name: friend.name,
-        emoji: getPersonEmoji(friend.name),
-      })),
+      ...friends.map((friend) => {
+        const displayName = friend.nickname?.trim() || friend.email || '친구';
+        return {
+          id: friend.id ?? friend.email,
+          name: displayName,
+          emoji: getPersonEmoji(displayName),
+        };
+      }),
     ];
   }, [friends, profile.emoji, profile.nickname]);
   const reactionOptions = useMemo(() => ['👏', '😍', '🔥', '✨', '👍', '🥳'], []);
