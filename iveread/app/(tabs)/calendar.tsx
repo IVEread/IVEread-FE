@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -16,13 +16,19 @@ export default function CalendarScreen() {
   const { recordsByOwner, addReaction } = useCalendarRecords();
   const { friends } = useFriends();
   const { profile } = useProfile();
-  const [selectedMemberId, setSelectedMemberId] = useState('me');
+  const currentUserId = profile.id?.trim() || 'me';
+  const [selectedMemberId, setSelectedMemberId] = useState(currentUserId);
   const [currentMonth, setCurrentMonth] = useState(new Date(2026, 0, 1));
   const [selectedDay, setSelectedDay] = useState<number | null>(3);
+  useEffect(() => {
+    if (selectedMemberId === 'me' && currentUserId !== 'me') {
+      setSelectedMemberId(currentUserId);
+    }
+  }, [currentUserId, selectedMemberId]);
   const members = useMemo<Member[]>(() => {
     return [
       {
-        id: 'me',
+        id: currentUserId,
         name: '나',
         emoji: profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊'),
       },
@@ -35,7 +41,7 @@ export default function CalendarScreen() {
         };
       }),
     ];
-  }, [friends, profile.emoji, profile.nickname]);
+  }, [currentUserId, friends, profile.emoji, profile.nickname]);
   const reactionOptions = useMemo(() => ['👏', '😍', '🔥', '✨', '👍', '🥳'], []);
 
   const year = currentMonth.getFullYear();
@@ -89,7 +95,7 @@ export default function CalendarScreen() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>읽기 캘린더</Text>
-          {selectedMemberId === 'me' && (
+          {selectedMemberId === currentUserId && (
             <Pressable
               style={styles.addButton}
               onPress={() => {
@@ -248,7 +254,7 @@ export default function CalendarScreen() {
                       key={emoji}
                       onPress={() => {
                         if (!selectedDateKey) return;
-                        if (selectedMemberId === 'me') {
+                        if (selectedMemberId === currentUserId) {
                           addReaction(selectedMemberId, selectedDateKey, {
                             id: `${selectedDateKey}-${Date.now()}`,
                             emoji,

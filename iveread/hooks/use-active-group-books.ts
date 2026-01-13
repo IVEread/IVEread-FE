@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ImageSourcePropType } from 'react-native';
 
 import { ApiClientError } from '@/services/api-client';
-import { getGroups } from '@/services/groups';
-import type { Group } from '@/types/group';
+import { getFinishedBooks, getGroups } from '@/services/groups';
+import type { FinishedGroup, Group } from '@/types/group';
 
 type LoadState = 'loading' | 'success' | 'error';
 
@@ -31,13 +31,11 @@ const parseDate = (value?: string | null) => {
   return date;
 };
 
-const isGroupActive = (group: Group) => {
+const isGroupStarted = (group: Group) => {
   const now = new Date();
   const startDate = parseDate(group.startDate);
-  const goalDate = parseDate(group.goalDate);
 
   if (startDate && startDate > now) return false;
-  if (goalDate && goalDate < now) return false;
   return true;
 };
 
@@ -68,6 +66,48 @@ const mapGroupsToBooks = (groups: Group[], fallbackCover: ImageSourcePropType) =
   return Array.from(bookMap.values());
 };
 
+const mapFinishedToBooks = (
+  finished: FinishedGroup[],
+  fallbackCover: ImageSourcePropType,
+) => {
+  const bookMap = new Map<string, GroupBookOption>();
+
+  finished.forEach((item) => {
+    const title = item.bookTitle?.trim();
+    if (!title) return;
+
+    const isbn = item.bookIsbn?.trim() || undefined;
+    const dedupeKey = isbn ?? title.toLowerCase();
+    if (bookMap.has(dedupeKey)) return;
+
+    const cover =
+      typeof item.bookCoverImage === 'string' && item.bookCoverImage.trim().length > 0
+        ? { uri: item.bookCoverImage }
+        : fallbackCover;
+
+    bookMap.set(dedupeKey, {
+      id: dedupeKey,
+      title,
+      isbn,
+      cover,
+    });
+  });
+
+  return Array.from(bookMap.values());
+};
+
+const mergeBookOptions = (sources: GroupBookOption[][]) => {
+  const merged = new Map<string, GroupBookOption>();
+
+  sources.flat().forEach((book) => {
+    if (!merged.has(book.id)) {
+      merged.set(book.id, book);
+    }
+  });
+
+  return Array.from(merged.values());
+};
+
 export function useActiveGroupBooks({ fallbackCover }: { fallbackCover: ImageSourcePropType }) {
   const [books, setBooks] = useState<GroupBookOption[]>([]);
   const [status, setStatus] = useState<LoadState>('loading');
@@ -77,9 +117,12 @@ export function useActiveGroupBooks({ fallbackCover }: { fallbackCover: ImageSou
     setStatus('loading');
     setError(null);
     try {
-      const groups = await getGroups();
-      const activeGroups = groups.filter(isGroupActive);
-      const mappedBooks = mapGroupsToBooks(activeGroups, fallbackCover);
+      const [groups, finishedBooks] = await Promise.all([getGroups(), getFinishedBooks()]);
+      const startedGroups = groups.filter(isGroupStarted);
+      const mappedBooks = mergeBookOptions([
+        mapGroupsToBooks(startedGroups, fallbackCover),
+        mapFinishedToBooks(finishedBooks, fallbackCover),
+      ]);
       setBooks(mappedBooks);
       setStatus('success');
     } catch (err) {

@@ -19,6 +19,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { useCalendarRecords } from '@/contexts/calendar-context';
+import { useProfile } from '@/contexts/profile-context';
 import { useActiveGroupBooks, type GroupBookOption } from '@/hooks/use-active-group-books';
 
 export default function AddRecordScreen() {
@@ -26,7 +27,9 @@ export default function AddRecordScreen() {
   const { date, ownerId } = useLocalSearchParams<{ date?: string; ownerId?: string }>();
   const insets = useSafeAreaInsets();
   const { addRecord } = useCalendarRecords();
+  const { profile } = useProfile();
   const fallbackCover = require('../assets/images/icon.png');
+  const currentUserId = profile.id?.trim() || 'me';
   const {
     books: bookOptions,
     status: bookStatus,
@@ -83,7 +86,8 @@ export default function AddRecordScreen() {
       Alert.alert('안내', '날짜를 선택해 주세요.');
       return;
     }
-    addRecord(ownerId ?? 'me', {
+    const resolvedOwnerId = ownerId?.trim() || currentUserId;
+    addRecord(resolvedOwnerId, {
       date: selectedDateKeyFromPicker,
       title: selectedBook ? selectedBook.title : '',
       note: note.trim(),
@@ -192,7 +196,7 @@ export default function AddRecordScreen() {
                 </Text>
               ) : bookOptions.length === 0 ? (
                 <Text style={styles.emptyText}>
-                  현재 진행 중인 독서 모임이 없습니다.
+                  진행 중이거나 완독한 책이 없습니다.
                 </Text>
               ) : (
                 bookOptions.map((book) => {
