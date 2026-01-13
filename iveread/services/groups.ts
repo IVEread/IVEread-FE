@@ -1,5 +1,5 @@
 import { request } from '@/services/api-client';
-import { CreateGroupInput, Group, UpdateGroupInput } from '@/types/group';
+import { CreateGroupInput, FinishedGroup, Group, UpdateGroupInput } from '@/types/group';
 
 export async function getGroups(): Promise<Group[]> {
   return request<Group[]>('/api/groups');
@@ -33,4 +33,14 @@ export async function leaveGroup(groupId: string): Promise<void> {
   await request<null>(`/api/groups/${encodeURIComponent(groupId)}/leave`, {
     method: 'DELETE',
   });
+}
+
+export async function finishGroupRead(groupId: string): Promise<void> {
+  await request<null>(`/api/groups/${encodeURIComponent(groupId)}/finish`, {
+    method: 'PATCH',
+  });
+}
+
+export async function getFinishedBooks(): Promise<FinishedGroup[]> {
+  return request<FinishedGroup[]>('/api/users/me/finished-books');
 }

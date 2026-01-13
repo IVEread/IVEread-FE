@@ -30,3 +30,13 @@ export type Group = {
   memberCount: number;
   createdAt: string;
 };
+
+export type FinishedGroup = {
+  id: string;
+  groupId: string;
+  bookIsbn: string;
+  bookTitle: string;
+  bookCoverImage: string;
+  bookAuthor: string;
+  finishedAt: string;
+};

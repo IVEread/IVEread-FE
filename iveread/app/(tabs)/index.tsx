@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Keyboard,
@@ -15,17 +15,19 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { ApiClientError } from '@/services/api-client';
 import { getBookByIsbn, searchBooks } from '@/services/books';
-import { getGroups } from '@/services/groups';
-import type { Group } from '@/types/group';
+import { getFinishedBooks, getGroups } from '@/services/groups';
+import type { FinishedGroup, Group } from '@/types/group';
 
 const FALLBACK_AUTHOR = '지은이 정보 없음';
 const FALLBACK_PUBLISHER = '출판사 정보 없음';
 type LoadState = 'loading' | 'success' | 'error';
+type FinishedLoadState = LoadState;
 
 type GroupCard = {
   id: string;
@@ -103,6 +105,17 @@ const mapGroupToCard = async (group: Group): Promise<GroupCard> => {
     cover,
   };
 };
+
+const formatDisplayDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}.${month}.${day}`;
+};
+
 export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('전체');
@@ -110,6 +123,9 @@ export default function HomeScreen() {
   const [groupCards, setGroupCards] = useState<GroupCard[]>([]);
   const [groupStatus, setGroupStatus] = useState<LoadState>('loading');
   const [groupError, setGroupError] = useState<string | null>(null);
+  const [finishedBooks, setFinishedBooks] = useState<FinishedGroup[]>([]);
+  const [finishedStatus, setFinishedStatus] = useState<FinishedLoadState>('loading');
+  const [finishedError, setFinishedError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const heroIllustration = require('../../assets/images/image-Photoroom1.png');
 
@@ -121,43 +137,74 @@ export default function HomeScreen() {
     return ['전체', ...Array.from(tagSet)];
   }, [groupCards]);
 
+  const finishedGroupIds = useMemo(
+    () => new Set(finishedBooks.map((item) => item.groupId)),
+    [finishedBooks],
+  );
+
   const filteredClubs = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     const filtered = groupCards.filter((club) => {
+      if (finishedGroupIds.has(club.id)) return false;
       const titleMatch = club.title.toLowerCase().includes(keyword);
       const groupMatch = club.groupName.toLowerCase().includes(keyword);
       const tagMatch = selectedTag === '전체' || club.tags.includes(selectedTag);
       return (titleMatch || groupMatch || !keyword) && tagMatch;
     });
     return filtered;
-  }, [groupCards, searchQuery, selectedTag]);
+  }, [finishedGroupIds, groupCards, searchQuery, selectedTag]);
+
+  const loadGroups = useCallback(async (isActiveRef?: { current: boolean }) => {
+    setGroupStatus('loading');
+    setGroupError(null);
+    try {
+      const groups = await getGroups();
+      const cards = await Promise.all(groups.map((group) => mapGroupToCard(group)));
+      if (isActiveRef && !isActiveRef.current) return;
+      setGroupCards(cards);
+      setGroupStatus('success');
+    } catch (error) {
+      if (isActiveRef && !isActiveRef.current) return;
+      setGroupCards([]);
+      setGroupStatus('error');
+      setGroupError(getErrorMessage(error, '교환독서 목록을 불러오지 못했어요.'));
+    }
+  }, []);
+
+  const loadFinishedBooks = useCallback(async (isActiveRef?: { current: boolean }) => {
+    setFinishedStatus('loading');
+    setFinishedError(null);
+    try {
+      const books = await getFinishedBooks();
+      if (isActiveRef && !isActiveRef.current) return;
+      setFinishedBooks(books);
+      setFinishedStatus('success');
+    } catch (error) {
+      if (isActiveRef && !isActiveRef.current) return;
+      setFinishedBooks([]);
+      setFinishedStatus('error');
+      setFinishedError(getErrorMessage(error, '완독한 책을 불러오지 못했어요.'));
+    }
+  }, []);
 
   useEffect(() => {
-    let isActive = true;
-
-    const load = async () => {
-      setGroupStatus('loading');
-      setGroupError(null);
-      try {
-        const groups = await getGroups();
-        const cards = await Promise.all(groups.map((group) => mapGroupToCard(group)));
-        if (!isActive) return;
-        setGroupCards(cards);
-        setGroupStatus('success');
-      } catch (error) {
-        if (!isActive) return;
-        setGroupCards([]);
-        setGroupStatus('error');
-        setGroupError(getErrorMessage(error, '교환독서 목록을 불러오지 못했어요.'));
-      }
-    };
-
-    load();
-
+    const isActive = { current: true };
+    loadGroups(isActive);
+    loadFinishedBooks(isActive);
     return () => {
-      isActive = false;
+      isActive.current = false;
     };
-  }, []);
+  }, [loadFinishedBooks, loadGroups]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const isActive = { current: true };
+      loadFinishedBooks(isActive);
+      return () => {
+        isActive.current = false;
+      };
+    }, [loadFinishedBooks]),
+  );
 
   useEffect(() => {
     if (selectedTag !== '전체' && !tagOptions.includes(selectedTag)) {
@@ -284,6 +331,49 @@ export default function HomeScreen() {
                 </Pressable>
               </Link>
             ))
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>완독한 책</Text>
+            <Text style={styles.sectionMeta}>완독</Text>
+          </View>
+          {finishedStatus === 'loading' ? (
+            <Text style={styles.emptyText}>완독한 책을 불러오는 중...</Text>
+          ) : finishedStatus === 'error' ? (
+            <Text style={styles.emptyText}>
+              {finishedError ?? '완독한 책을 불러올 수 없어요.'}
+            </Text>
+          ) : finishedBooks.length === 0 ? (
+            <Text style={styles.emptyText}>아직 완독한 책이 없어요.</Text>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.finishedRow}>
+              {finishedBooks.map((item) => {
+                const finishedAt = formatDisplayDate(item.finishedAt);
+                return (
+                  <View key={item.id} style={styles.finishedCard}>
+                    {item.bookCoverImage ? (
+                      <Image source={{ uri: item.bookCoverImage }} style={styles.finishedCover} />
+                    ) : (
+                      <View style={styles.finishedCoverFallback}>
+                        <Text style={styles.finishedCoverText}>표지</Text>
+                      </View>
+                    )}
+                    <View style={styles.finishedBody}>
+                      <Text style={styles.finishedTitle}>{item.bookTitle}</Text>
+                      <Text style={styles.finishedAuthor}>{item.bookAuthor}</Text>
+                      <Text style={styles.finishedDate}>
+                        {finishedAt ? `${finishedAt} 완독` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
           )}
         </View>
 
@@ -485,5 +575,58 @@ const styles = StyleSheet.create({
   cardTagText: {
     fontSize: 11,
     color: Palette.accent,
+  },
+  finishedRow: {
+    paddingRight: 12,
+  },
+  finishedCard: {
+    flexDirection: 'row',
+    backgroundColor: Palette.surface,
+    borderRadius: 18,
+    padding: 14,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    ...Shadows.card,
+  },
+  finishedCover: {
+    width: 54,
+    aspectRatio: 2 / 3,
+    borderRadius: 12,
+    marginRight: 12,
+    resizeMode: 'cover',
+    backgroundColor: Palette.accentSoft,
+  },
+  finishedCoverFallback: {
+    width: 54,
+    aspectRatio: 2 / 3,
+    borderRadius: 12,
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Palette.accentSoft,
+  },
+  finishedCoverText: {
+    fontSize: 11,
+    color: Palette.textSecondary,
+  },
+  finishedBody: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  finishedTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Palette.textPrimary,
+    marginBottom: 4,
+  },
+  finishedAuthor: {
+    fontSize: 12,
+    color: Palette.textSecondary,
+    marginBottom: 6,
+  },
+  finishedDate: {
+    fontSize: 11,
+    color: Palette.textTertiary,
   },
 });

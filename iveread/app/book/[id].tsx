@@ -28,7 +28,7 @@ import { getPersonEmoji } from '@/constants/people';
 import { useProfile } from '@/contexts/profile-context';
 import { ApiClientError } from '@/services/api-client';
 import { getBookByIsbn, searchBooks } from '@/services/books';
-import { getGroup, getGroups, leaveGroup } from '@/services/groups';
+import { finishGroupRead, getGroup, getGroups, leaveGroup } from '@/services/groups';
 import {
   createRecord,
   createRecordComment,
@@ -940,7 +940,7 @@ export default function BookDetailScreen() {
     setIsCompleting(true);
     setCompleteError(null);
     try {
-      await leaveGroup(groupId);
+      await finishGroupRead(groupId);
       router.replace('/(tabs)');
     } catch (error) {
       const message = getErrorMessage(error, '완독 처리에 실패했어요.');
