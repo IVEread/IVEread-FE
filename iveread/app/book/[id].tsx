@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -19,6 +19,7 @@ import {
   type ImageSourcePropType,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -27,8 +28,9 @@ import { getPersonEmoji } from '@/constants/people';
 import { useProfile } from '@/contexts/profile-context';
 import { ApiClientError } from '@/services/api-client';
 import { getBookByIsbn, searchBooks } from '@/services/books';
-import { getGroup, getGroups } from '@/services/groups';
+import { getGroup, getGroups, leaveGroup } from '@/services/groups';
 import {
+  createRecord,
   createRecordComment,
   getGroupRecords,
   getRecordComments,
@@ -142,6 +144,18 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const resolveImageUrl = (
+  source: ImageSourcePropType | null,
+  uri: string | null,
+): string | null => {
+  if (uri) return uri;
+  if (source && typeof source === 'object' && !Array.isArray(source) && 'uri' in source) {
+    const imageUri = source.uri;
+    return typeof imageUri === 'string' && imageUri.length > 0 ? imageUri : null;
+  }
+  return null;
+};
+
 const isNotFoundError = (error: unknown) =>
   error instanceof ApiClientError && error.status === 404;
 
@@ -227,6 +241,9 @@ export default function BookDetailScreen() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [feedStatus, setFeedStatus] = useState<LoadState>('loading');
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadCaption, setUploadCaption] = useState('');
@@ -237,6 +254,8 @@ export default function BookDetailScreen() {
   const [selectedWeek, setSelectedWeek] = useState<'current' | 'previous'>('current');
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const hasLoadedFeedRef = useRef(false);
+  const uploadScrollRef = useRef<ScrollView | null>(null);
   const myEmoji = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊');
   const getEmojiForName = (name: string) => getPersonEmoji(name, myEmoji);
   const galleryCardSize = Math.floor((width - 22 * 2 - 14) / 2);
@@ -298,11 +317,11 @@ export default function BookDetailScreen() {
   const stampRowOffset = 80;
 
   useEffect(() => {
-    let isActive = true;
+    const isActiveRef = { current: true };
 
     const load = async () => {
-      if (!routeId) {
-        if (!isActive) return;
+        if (!routeId) {
+          if (!isActiveRef.current) return;
         setBook(null);
         setBookStatus('error');
         setBookError('도서 정보를 불러올 수 없어요.');
@@ -335,7 +354,8 @@ export default function BookDetailScreen() {
       }
 
       try {
-        resolvedBook = await getBookByIsbn(routeId);
+        const bookId = resolvedGroup?.bookIsbn || routeId;
+        resolvedBook = await getBookByIsbn(bookId);
       } catch (error) {
         if (!isNotFoundError(error)) {
           bookMessage = getErrorMessage(error, '도서 정보를 불러오지 못했어요.');
@@ -375,7 +395,7 @@ export default function BookDetailScreen() {
         }
       }
 
-      if (!isActive) return;
+      if (!isActiveRef.current) return;
 
       if (resolvedBook) {
         setBook(resolvedBook);
@@ -403,22 +423,117 @@ export default function BookDetailScreen() {
     load();
 
     return () => {
-      isActive = false;
+      isActiveRef.current = false;
     };
   }, [routeId]);
 
+  const loadFeed = useCallback(
+    async (options?: { reset?: boolean; isActive?: { current: boolean } }) => {
+      if (!groupId) return;
+      const isActiveRef = options?.isActive;
+
+      if (options?.reset) {
+        setFeedItems([]);
+        setLikedPostIds(new Set());
+      }
+      setFeedStatus('loading');
+      setFeedError(null);
+
+      try {
+        const userId = await getUserId();
+        const records = await getGroupRecords(groupId);
+        const sorted = [...records].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        const likedSet = new Set<string>();
+        const mapped = await Promise.all(
+          sorted.map(async (record): Promise<FeedItem> => {
+            let comments: FeedComment[] = [];
+            let reactionsCount = 0;
+            let reactionsByUser = false;
+
+            try {
+              const recordComments = await getRecordComments(record.id);
+              comments = recordComments.map((comment) => ({
+                id: comment.id,
+                name: comment.userNickname,
+                time: formatRelativeTime(String(comment.createdAt)),
+                text: comment.content,
+              }));
+            } catch {
+              comments = [];
+            }
+
+            try {
+              const reactions = await getRecordReactions(record.id);
+              reactionsCount = reactions.length;
+              if (userId) {
+                reactionsByUser = reactions.some((reaction) => reaction.userId === userId);
+              }
+            } catch {
+              reactionsCount = 0;
+            }
+
+            if (reactionsByUser) {
+              likedSet.add(record.id);
+            }
+
+            const readDate = new Date(record.readDate);
+            const createdDate = Number.isNaN(readDate.getTime())
+              ? new Date(record.createdAt)
+              : readDate;
+
+            return {
+              id: record.id,
+              recordId: record.id,
+              name: record.userNickname,
+              time: formatRelativeTime(String(record.createdAt)),
+              image: { uri: record.imageUrl },
+              caption: record.comment ?? '',
+              likes: reactionsCount,
+              comments,
+              createdAt: formatDateKey(createdDate),
+              source: 'remote',
+            };
+          }),
+        );
+
+        if (isActiveRef && !isActiveRef.current) return;
+        setFeedItems(mapped);
+        setFeedStatus('success');
+        setFeedError(null);
+        setLikedPostIds(likedSet);
+      } catch (error) {
+        if (isActiveRef && !isActiveRef.current) return;
+        if (options?.reset) {
+          setFeedItems([]);
+        }
+        setFeedStatus('error');
+        setFeedError(getErrorMessage(error, '독서 기록을 불러오지 못했어요.'));
+      } finally {
+        if (isActiveRef && !isActiveRef.current) return;
+        hasLoadedFeedRef.current = true;
+      }
+    },
+    [groupId],
+  );
+
   useEffect(() => {
-    let isActive = true;
+    const isActiveRef = { current: true };
 
     const load = async () => {
+      hasLoadedFeedRef.current = false;
       if (!groupId) {
-        if (!isActive) return;
+        if (!isActiveRef.current) return;
         setSentences([]);
         setFeedItems([]);
+        setLikedPostIds(new Set());
         setSelectedPostId(null);
         setOpenReplyId(null);
         setReplyInputs({});
         setFeedCommentText('');
+        setCompleteError(null);
+        setIsCompleting(false);
         if (groupStatus === 'loading') {
           setSentencesStatus('loading');
           setSentencesError(null);
@@ -427,6 +542,7 @@ export default function BookDetailScreen() {
         } else {
           setSentencesStatus('error');
           setSentencesError('교환독서 정보를 불러올 수 없어요.');
+          setFeedItems([]);
           setFeedStatus('error');
           setFeedError('독서 기록을 불러올 수 없어요.');
         }
@@ -436,15 +552,12 @@ export default function BookDetailScreen() {
       setSentences([]);
       setSentencesStatus('loading');
       setSentencesError(null);
-      setFeedItems([]);
-      setFeedStatus('loading');
-      setFeedError(null);
       setSelectedPostId(null);
       setOpenReplyId(null);
       setReplyInputs({});
       setFeedCommentText('');
-
-      const userId = await getUserId();
+      setCompleteError(null);
+      setIsCompleting(false);
 
       const loadSentences = async () => {
         try {
@@ -477,99 +590,40 @@ export default function BookDetailScreen() {
             }),
           );
 
-          if (!isActive) return;
+          if (!isActiveRef.current) return;
           setSentences(mapped);
           setSentencesStatus('success');
           setSentencesError(null);
         } catch (error) {
-          if (!isActive) return;
+          if (!isActiveRef.current) return;
           setSentences([]);
           setSentencesStatus('error');
           setSentencesError(getErrorMessage(error, '문장을 불러오지 못했어요.'));
         }
       };
 
-      const loadRecords = async () => {
-        try {
-          const records = await getGroupRecords(groupId);
-          const sorted = [...records].sort(
-            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          );
-          const likedSet = new Set<string>();
-          const mapped = await Promise.all(
-            sorted.map(async (record): Promise<FeedItem> => {
-              let comments: FeedComment[] = [];
-              let reactionsCount = 0;
-              let reactionsByUser = false;
-
-              try {
-                const recordComments = await getRecordComments(record.id);
-                comments = recordComments.map((comment) => ({
-                  id: comment.id,
-                  name: comment.userNickname,
-                  time: formatRelativeTime(String(comment.createdAt)),
-                  text: comment.content,
-                }));
-              } catch {
-                comments = [];
-              }
-
-              try {
-                const reactions = await getRecordReactions(record.id);
-                reactionsCount = reactions.length;
-                if (userId) {
-                  reactionsByUser = reactions.some((reaction) => reaction.userId === userId);
-                }
-              } catch {
-                reactionsCount = 0;
-              }
-
-              if (reactionsByUser) {
-                likedSet.add(record.id);
-              }
-
-              const readDate = new Date(record.readDate);
-              const createdDate = Number.isNaN(readDate.getTime())
-                ? new Date(record.createdAt)
-                : readDate;
-
-              return {
-                id: record.id,
-                recordId: record.id,
-                name: record.userNickname,
-                time: formatRelativeTime(String(record.createdAt)),
-                image: { uri: record.imageUrl },
-                caption: record.comment ?? '',
-                likes: reactionsCount,
-                comments,
-                createdAt: formatDateKey(createdDate),
-                source: 'remote',
-              };
-            }),
-          );
-
-          if (!isActive) return;
-          setFeedItems(mapped);
-          setFeedStatus('success');
-          setFeedError(null);
-          setLikedPostIds(likedSet);
-        } catch (error) {
-          if (!isActive) return;
-          setFeedItems([]);
-          setFeedStatus('error');
-          setFeedError(getErrorMessage(error, '독서 기록을 불러오지 못했어요.'));
-        }
-      };
-
-      await Promise.all([loadSentences(), loadRecords()]);
+      await Promise.all([loadSentences(), loadFeed({ reset: true, isActive: isActiveRef })]);
     };
 
     load();
 
     return () => {
-      isActive = false;
+      isActiveRef.current = false;
     };
-  }, [groupId, groupStatus]);
+  }, [groupId, groupStatus, loadFeed]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!groupId || !hasLoadedFeedRef.current) {
+        return undefined;
+      }
+      const isActive = { current: true };
+      loadFeed({ reset: false, isActive });
+      return () => {
+        isActive.current = false;
+      };
+    }, [groupId, loadFeed]),
+  );
 
   const bookTitle =
     book?.title ?? group?.bookTitle ?? (bookStatus === 'loading' ? '불러오는 중...' : '');
@@ -711,7 +765,21 @@ export default function BookDetailScreen() {
                   <Text style={styles.backIcon}>‹</Text>
                 </Pressable>
                 <Text style={styles.headerTitle}>교환독서 상세 페이지</Text>
-                <View style={styles.headerSpacer} />
+                {groupId ? (
+                  <Pressable
+                    onPress={handleLeaveGroup}
+                    style={[
+                      styles.headerAction,
+                      (isLeaving || isCompleting) && styles.headerActionDisabled,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="그룹 나가기"
+                    disabled={isLeaving || isCompleting}>
+                    <Text style={styles.headerActionIcon}>➤</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.headerSpacer} />
+                )}
               </View>
 
               <View style={styles.bookCard}>
@@ -780,6 +848,23 @@ export default function BookDetailScreen() {
                       <Text style={styles.memberCount}>
                         {group.memberCount}명이 함께 읽고 있어요
                       </Text>
+                    </View>
+                    <View style={styles.completeRow}>
+                      <Pressable
+                        style={[
+                          styles.completeButton,
+                          isCompleting && styles.completeButtonDisabled,
+                        ]}
+                        onPress={handleCompleteReading}
+                        accessibilityRole="button"
+                        disabled={isCompleting}>
+                        <Text style={styles.completeButtonText}>
+                          {isCompleting ? '완독 처리 중...' : '완독하기'}
+                        </Text>
+                      </Pressable>
+                      {completeError ? (
+                        <Text style={styles.completeErrorText}>{completeError}</Text>
+                      ) : null}
                     </View>
                   </>
                 ) : (
@@ -1085,18 +1170,24 @@ export default function BookDetailScreen() {
       bookStatus,
       bookTag,
       bookTitle,
+      completeError,
       feedItems,
       feedError,
       feedStatus,
       galleryCardSize,
       getEmojiForName,
+      groupId,
       groupError,
       groupGoalDate,
       groupStartDate,
       groupStatus,
+      handleCompleteReading,
+      handleLeaveGroup,
       handleAddReply,
       handleAddSentence,
       insets.bottom,
+      isCompleting,
+      isLeaving,
       isAddingSentence,
       myEmoji,
       memberAvatarCount,
@@ -1147,26 +1238,39 @@ export default function BookDetailScreen() {
       Alert.alert('안내', '사진과 글을 모두 입력해 주세요.');
       return;
     }
-    setFeedItems((prev) => [
-      {
-        id: `feed-${Date.now()}`,
-        name: profile.nickname || '나',
-        time: '방금',
-        image: selectedUploadUri ? { uri: selectedUploadUri } : selectedUploadImage!,
-        caption: uploadCaption.trim(),
-        likes: 0,
-        comments: [],
-        createdAt: formatDateKey(new Date()),
-        source: 'local',
-      },
-      ...prev,
-    ]);
-    setFeedStatus('success');
-    setFeedError(null);
-    setSelectedUploadImage(null);
-    setSelectedUploadUri(null);
-    setUploadCaption('');
-    setIsUploadOpen(false);
+
+    if (!groupId || !book?.isbn) {
+      Alert.alert('안내', '교환독서 정보를 불러온 뒤 업로드할 수 있어요.');
+      return;
+    }
+
+    const imageUrl = resolveImageUrl(selectedUploadImage, selectedUploadUri);
+    if (!imageUrl) {
+      Alert.alert('안내', '이미지 주소를 불러올 수 없어요. 다시 선택해 주세요.');
+      return;
+    }
+
+    const submit = async () => {
+      try {
+        await createRecord(groupId, {
+          readDate: formatDateKey(new Date()),
+          startPage: 1,
+          endPage: 1,
+          comment: uploadCaption.trim(),
+          imageUrl,
+          bookIsbn: book.isbn,
+        });
+        await loadFeed({ reset: true });
+        setSelectedUploadImage(null);
+        setSelectedUploadUri(null);
+        setUploadCaption('');
+        setIsUploadOpen(false);
+      } catch (error) {
+        Alert.alert('안내', getErrorMessage(error, '독서 기록 업로드에 실패했어요.'));
+      }
+    };
+
+    submit();
   };
 
   const handleToggleLike = (postId: string) => {
@@ -1227,6 +1331,58 @@ export default function BookDetailScreen() {
     }
   };
 
+  const handleLeaveGroup = useCallback(() => {
+    if (isLeaving || isCompleting) {
+      return;
+    }
+    if (!groupId) {
+      Alert.alert('안내', '교환독서 정보를 불러온 뒤 나갈 수 있어요.');
+      return;
+    }
+
+    Alert.alert('그룹 나가기', '정말 이 그룹에서 나가시겠어요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '나가기',
+        style: 'destructive',
+        onPress: () => {
+          setIsLeaving(true);
+          leaveGroup(groupId)
+            .then(() => {
+              router.replace('/(tabs)');
+            })
+            .catch((error) => {
+              const message = getErrorMessage(error, '그룹 나가기에 실패했어요.');
+              Alert.alert('안내', message);
+            })
+            .finally(() => {
+              setIsLeaving(false);
+            });
+        },
+      },
+    ]);
+  }, [groupId, isLeaving, isCompleting, router]);
+
+  const handleCompleteReading = async () => {
+    if (isCompleting) return;
+    if (!groupId) {
+      Alert.alert('안내', '교환독서 정보를 불러온 뒤 완료할 수 있어요.');
+      return;
+    }
+
+    setIsCompleting(true);
+    setCompleteError(null);
+    try {
+      await leaveGroup(groupId);
+      router.replace('/(tabs)');
+    } catch (error) {
+      const message = getErrorMessage(error, '완독 처리에 실패했어요.');
+      setCompleteError(message);
+      Alert.alert('안내', message);
+    } finally {
+      setIsCompleting(false);
+    }
+  };
 
   const handleAddFeedComment = async () => {
     if (!selectedPostId || !feedCommentText.trim()) {
@@ -1416,11 +1572,12 @@ export default function BookDetailScreen() {
                 keyboardVerticalOffset={insets.top}>
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                   <View style={[styles.uploadCard, { maxHeight: height * 0.8 }]}>
-                    <ScrollView
-                      showsVerticalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
-                      keyboardDismissMode="interactive"
-                      contentContainerStyle={{ paddingBottom: 160 + insets.bottom }}>
+                      <ScrollView
+                        ref={uploadScrollRef}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="interactive"
+                        contentContainerStyle={{ paddingBottom: 160 + insets.bottom }}>
                       <View style={styles.uploadHero}>
                         <View style={styles.uploadHeroBadge}>
                           <Text style={styles.uploadHeroBadgeText}>📚</Text>
@@ -1502,6 +1659,11 @@ export default function BookDetailScreen() {
                           <TextInput
                             value={uploadCaption}
                             onChangeText={setUploadCaption}
+                            onFocus={() => {
+                              requestAnimationFrame(() => {
+                                uploadScrollRef.current?.scrollToEnd({ animated: true });
+                              });
+                            }}
                             placeholder="독서 기록을 남겨보세요."
                             placeholderTextColor={Palette.textTertiary}
                             style={styles.uploadInput}
@@ -1582,6 +1744,19 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 36,
+  },
+  headerAction: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActionDisabled: {
+    opacity: 0.4,
+  },
+  headerActionIcon: {
+    fontSize: 18,
+    color: Palette.textSecondary,
   },
   bookCard: {
     flexDirection: 'row',
@@ -1701,6 +1876,29 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 11,
     color: Palette.textSecondary,
+  },
+  completeRow: {
+    marginTop: 12,
+  },
+  completeButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: Palette.accent,
+  },
+  completeButtonDisabled: {
+    opacity: 0.6,
+  },
+  completeButtonText: {
+    fontSize: 12,
+    color: Palette.surface,
+    fontWeight: '600',
+  },
+  completeErrorText: {
+    marginTop: 6,
+    fontSize: 11,
+    color: Palette.textTertiary,
   },
   stampCard: {
     backgroundColor: Palette.surface,

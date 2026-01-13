@@ -10,7 +10,7 @@ export type GroupBookInput = {
 export type CreateGroupInput = {
   name: string;
   startDate: string;
-  goalDate: string;
+  goalDate: string | null;
   book: GroupBookInput;
 };
 
@@ -24,6 +24,7 @@ export type Group = {
   name: string;
   startDate: string;
   goalDate: string | null;
+  bookIsbn: string;
   bookTitle: string;
   bookCover: string;
   memberCount: number;

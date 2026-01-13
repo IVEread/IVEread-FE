@@ -16,7 +16,7 @@ import {
   findNodeHandle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { ApiClientError } from '@/services/api-client';
@@ -36,13 +36,9 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-const buildGoalDate = (startDate: string) => startDate;
-
 export default function CreateGroupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ query?: string; tag?: string }>();
-  const tagParam = Array.isArray(params.tag) ? params.tag[0] : params.tag;
   const today = new Date();
   const [form, setForm] = useState({
     groupName: '',
@@ -50,7 +46,6 @@ export default function CreateGroupScreen() {
     description: '',
     startDate: '',
     memberLimit: '',
-    tags: tagParam ?? '',
   });
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [bookResults, setBookResults] = useState<Book[]>([]);
@@ -62,22 +57,32 @@ export default function CreateGroupScreen() {
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [isGoalDatePickerOpen, setIsGoalDatePickerOpen] = useState(false);
+  const [goalYear, setGoalYear] = useState(today.getFullYear());
+  const [goalMonth, setGoalMonth] = useState(today.getMonth() + 1);
+  const [goalDay, setGoalDay] = useState<number | null>(null);
   const [isMemberPickerOpen, setIsMemberPickerOpen] = useState(false);
   const groupIllustration = require('../assets/images/image-Photoroom4.png');
   const scrollViewRef = useRef<ScrollView>(null);
   const groupNameRef = useRef<TextInput | null>(null);
   const bookTitleRef = useRef<TextInput | null>(null);
-  const tagsRef = useRef<TextInput | null>(null);
   const descriptionRef = useRef<TextInput | null>(null);
   const [focusedField, setFocusedField] = useState<React.RefObject<TextInput | null> | null>(null);
 
   const daysInMonth = useMemo(() => {
     return new Date(selectedYear, selectedMonth, 0).getDate();
   }, [selectedYear, selectedMonth]);
+  const goalDaysInMonth = useMemo(() => {
+    return new Date(goalYear, goalMonth, 0).getDate();
+  }, [goalYear, goalMonth]);
 
   const selectedDateKeyFromPicker =
     selectedDay !== null
       ? `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`
+      : null;
+  const selectedGoalDateKeyFromPicker =
+    goalDay !== null
+      ? `${goalYear}-${String(goalMonth).padStart(2, '0')}-${String(goalDay).padStart(2, '0')}`
       : null;
 
   const displayStartDate = useMemo(() => {
@@ -85,6 +90,11 @@ export default function CreateGroupScreen() {
     const [dYear, dMonth, dDay] = selectedDateKeyFromPicker.split('-');
     return `${dYear}.${dMonth}.${dDay}`;
   }, [selectedDateKeyFromPicker]);
+  const displayGoalDate = useMemo(() => {
+    if (!selectedGoalDateKeyFromPicker) return '목표일을 선택하세요';
+    const [dYear, dMonth, dDay] = selectedGoalDateKeyFromPicker.split('-');
+    return `${dYear}.${dMonth}.${dDay}`;
+  }, [selectedGoalDateKeyFromPicker]);
 
   const formatDateLabel = (year: number, month: number, day: number) =>
     `${year}.${String(month).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
@@ -152,7 +162,7 @@ export default function CreateGroupScreen() {
     const payload = {
       name: form.groupName.trim(),
       startDate,
-      goalDate: buildGoalDate(startDate),
+      goalDate: selectedGoalDateKeyFromPicker ?? null,
       book: {
         isbn: book.isbn,
         title: book.title,
@@ -292,7 +302,7 @@ export default function CreateGroupScreen() {
                     setFocusedField(bookTitleRef);
                     scrollToInput(bookTitleRef);
                   }}
-                  onSubmitEditing={() => tagsRef.current?.focus()}
+                  onSubmitEditing={() => descriptionRef.current?.focus()}
                   style={styles.input}
                 />
               </View>
@@ -323,22 +333,19 @@ export default function CreateGroupScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>태그</Text>
-                <TextInput
-                  ref={tagsRef}
-                  value={form.tags}
-                  onChangeText={(value) => updateForm('tags', value)}
-                  placeholder="예: 고전, 토론, 소설"
-                  placeholderTextColor={Palette.textTertiary}
-                  returnKeyType="next"
-                  blurOnSubmit={false}
-                  onFocus={() => {
-                    setFocusedField(tagsRef);
-                    scrollToInput(tagsRef);
-                  }}
-                  onSubmitEditing={() => descriptionRef.current?.focus()}
-                  style={styles.input}
-                />
+                <Text style={styles.label}>목표일 (선택)</Text>
+                <Pressable
+                  style={styles.pickerButton}
+                  onPress={() => setIsGoalDatePickerOpen(true)}
+                  accessibilityRole="button">
+                  <Text
+                    style={[
+                      styles.pickerText,
+                      !selectedGoalDateKeyFromPicker && styles.pickerPlaceholder,
+                    ]}>
+                    {selectedGoalDateKeyFromPicker ? displayGoalDate : '목표일을 선택하세요'}
+                  </Text>
+                </Pressable>
               </View>
 
               <View style={styles.field}>
@@ -462,6 +469,74 @@ export default function CreateGroupScreen() {
                           onPress={() => {
                             setSelectedDay(day);
                             updateForm('startDate', formatDateLabel(selectedYear, selectedMonth, day));
+                          }}
+                          accessibilityRole="button">
+                          <Text style={styles.dateOptionText}>{day}일</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </Pressable>
+            </Pressable>
+          </Modal>
+
+          <Modal
+            visible={isGoalDatePickerOpen}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setIsGoalDatePickerOpen(false)}>
+            <Pressable style={styles.modalBackdrop} onPress={() => setIsGoalDatePickerOpen(false)}>
+              <Pressable style={styles.pickerSheet} onPress={() => {}} accessibilityRole="menu">
+                <View style={styles.pickerHeader}>
+                  <Text style={styles.pickerTitle}>목표일 선택 (선택)</Text>
+                  <Pressable onPress={() => setIsGoalDatePickerOpen(false)} accessibilityRole="button">
+                    <Text style={styles.pickerDone}>완료</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.datePickerRow}>
+                  <ScrollView style={styles.dateColumn} showsVerticalScrollIndicator={false}>
+                    {[goalYear - 1, goalYear, goalYear + 1].map((year) => {
+                      const isActive = year === goalYear;
+                      return (
+                        <Pressable
+                          key={year}
+                          style={[styles.dateOption, isActive && styles.dateOptionActive]}
+                          onPress={() => {
+                            setGoalYear(year);
+                          }}
+                          accessibilityRole="button">
+                          <Text style={styles.dateOptionText}>{year}년</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                  <ScrollView style={styles.dateColumn} showsVerticalScrollIndicator={false}>
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => {
+                      const isActive = month === goalMonth;
+                      return (
+                        <Pressable
+                          key={month}
+                          style={[styles.dateOption, isActive && styles.dateOptionActive]}
+                          onPress={() => {
+                            setGoalMonth(month);
+                            setGoalDay(null);
+                          }}
+                          accessibilityRole="button">
+                          <Text style={styles.dateOptionText}>{month}월</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                  <ScrollView style={styles.dateColumnLast} showsVerticalScrollIndicator={false}>
+                    {Array.from({ length: goalDaysInMonth }, (_, index) => index + 1).map((day) => {
+                      const isActive = day === goalDay;
+                      return (
+                        <Pressable
+                          key={day}
+                          style={[styles.dateOption, isActive && styles.dateOptionActive]}
+                          onPress={() => {
+                            setGoalDay(day);
                           }}
                           accessibilityRole="button">
                           <Text style={styles.dateOptionText}>{day}일</Text>
