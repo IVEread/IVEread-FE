@@ -31,7 +31,7 @@ export default function CalendarScreen() {
         return {
           id: friend.id ?? friend.email,
           name: displayName,
-          emoji: getPersonEmoji(displayName),
+          emoji: friend.userProfileEmoji || getPersonEmoji(displayName),
         };
       }),
     ];
