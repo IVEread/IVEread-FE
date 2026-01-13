@@ -19,19 +19,19 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { useCalendarRecords } from '@/contexts/calendar-context';
-
-const bookOptions = [
-  { title: '1984', cover: require('../assets/images/icon.png') },
-  { title: '사피엔스', cover: require('../assets/images/react-logo.png') },
-  { title: '위대한 개츠비', cover: require('../assets/images/partial-react-logo.png') },
-  { title: '데미안', cover: require('../assets/images/splash-icon.png') },
-];
+import { useActiveGroupBooks, type GroupBookOption } from '@/hooks/use-active-group-books';
 
 export default function AddRecordScreen() {
   const router = useRouter();
   const { date, ownerId } = useLocalSearchParams<{ date?: string; ownerId?: string }>();
   const insets = useSafeAreaInsets();
   const { addRecord } = useCalendarRecords();
+  const fallbackCover = require('../assets/images/icon.png');
+  const {
+    books: bookOptions,
+    status: bookStatus,
+    error: bookError,
+  } = useActiveGroupBooks({ fallbackCover });
   const initialDate = useMemo(() => {
     if (!date) return null;
     const [year, month, day] = date.split('-').map(Number);
@@ -48,7 +48,7 @@ export default function AddRecordScreen() {
   );
   const [selectedDay, setSelectedDay] = useState<number | null>(initialDate?.day ?? null);
   const [isBookPickerOpen, setIsBookPickerOpen] = useState(false);
-  const [selectedBook, setSelectedBook] = useState<(typeof bookOptions)[number] | null>(null);
+  const [selectedBook, setSelectedBook] = useState<GroupBookOption | null>(null);
   const [note, setNote] = useState('');
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 160 + insets.bottom }],
@@ -87,7 +87,7 @@ export default function AddRecordScreen() {
       date: selectedDateKeyFromPicker,
       title: selectedBook ? selectedBook.title : '',
       note: note.trim(),
-      cover: selectedBook ? selectedBook.cover : bookOptions[0].cover,
+      cover: selectedBook ? selectedBook.cover : fallbackCover,
       reactions: [],
     });
     router.back();
@@ -184,23 +184,35 @@ export default function AddRecordScreen() {
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.pickerList}>
-              {bookOptions.map((book) => {
-                const isActive = selectedBook?.title === book.title;
-                return (
-                  <Pressable
-                    key={book.title}
-                    style={[styles.pickerItem, isActive && styles.pickerItemActive]}
-                    onPress={() => {
-                      setSelectedBook(book);
-                      setIsBookPickerOpen(false);
-                    }}
-                    accessibilityRole="button">
-                    <Image source={book.cover} style={styles.pickerCover} />
-                    <Text style={styles.pickerItemText}>{book.title}</Text>
-                    {isActive && <Text style={styles.pickerCheck}>✓</Text>}
-                  </Pressable>
-                );
-              })}
+              {bookStatus === 'loading' ? (
+                <Text style={styles.emptyText}>책 목록을 불러오는 중...</Text>
+              ) : bookStatus === 'error' ? (
+                <Text style={styles.emptyText}>
+                  {bookError ?? '책 목록을 불러올 수 없어요.'}
+                </Text>
+              ) : bookOptions.length === 0 ? (
+                <Text style={styles.emptyText}>
+                  현재 진행 중인 독서 모임이 없습니다.
+                </Text>
+              ) : (
+                bookOptions.map((book) => {
+                  const isActive = selectedBook?.id === book.id;
+                  return (
+                    <Pressable
+                      key={book.id}
+                      style={[styles.pickerItem, isActive && styles.pickerItemActive]}
+                      onPress={() => {
+                        setSelectedBook(book);
+                        setIsBookPickerOpen(false);
+                      }}
+                      accessibilityRole="button">
+                      <Image source={book.cover} style={styles.pickerCover} />
+                      <Text style={styles.pickerItemText}>{book.title}</Text>
+                      {isActive && <Text style={styles.pickerCheck}>✓</Text>}
+                    </Pressable>
+                  );
+                })
+              )}
             </ScrollView>
           </Pressable>
         </Pressable>
@@ -399,6 +411,12 @@ const styles = StyleSheet.create({
   },
   pickerList: {
     paddingBottom: 8,
+  },
+  emptyText: {
+    paddingVertical: 12,
+    textAlign: 'center',
+    color: Palette.textTertiary,
+    fontSize: 13,
   },
   pickerItem: {
     flexDirection: 'row',
