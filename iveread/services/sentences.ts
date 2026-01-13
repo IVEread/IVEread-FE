@@ -1,5 +1,5 @@
 import { request } from '@/services/api-client';
-import { CreateSentenceCommentInput, SentenceComment } from '@/types/comment';
+import { CreateSentenceCommentInput, SentenceComment, UpdateSentenceCommentInput } from '@/types/comment';
 import { CreateSentenceInput, Sentence, UpdateSentenceInput } from '@/types/sentence';
 
 export async function getGroupSentences(groupId: string): Promise<Sentence[]> {
@@ -37,5 +37,21 @@ export async function createSentenceComment(
   return request<SentenceComment>(`/api/sentences/${encodeURIComponent(sentenceId)}/comments`, {
     method: 'POST',
     body: payload,
+  });
+}
+
+export async function updateSentenceComment(
+  commentId: string,
+  payload: UpdateSentenceCommentInput
+): Promise<SentenceComment> {
+  return request<SentenceComment>(`/api/comments/${encodeURIComponent(commentId)}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function deleteSentenceComment(commentId: string): Promise<void> {
+  await request<null>(`/api/comments/${encodeURIComponent(commentId)}`, {
+    method: 'DELETE',
   });
 }

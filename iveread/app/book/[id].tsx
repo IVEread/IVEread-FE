@@ -34,13 +34,16 @@ import {
   createRecordComment,
   getGroupRecords,
   getRecordComments,
-  getRecordReactions,
+  toggleRecordLike,
 } from '@/services/records';
+import { getRecordLikeState, setRecordLikeState } from '@/services/record-likes';
 import {
   createSentence,
   createSentenceComment,
+  deleteSentenceComment,
   getGroupSentences,
   getSentenceComments,
+  updateSentenceComment,
 } from '@/services/sentences';
 import { getUserId } from '@/services/session';
 import type { Book } from '@/types/book';
@@ -80,6 +83,7 @@ type SentenceReply = {
   name: string;
   time: string;
   text: string;
+  userId: string | null;
 };
 
 type SentenceItem = {
@@ -238,6 +242,9 @@ export default function BookDetailScreen() {
   const [sentencePage, setSentencePage] = useState('');
   const [replyInputs, setReplyInputs] = useState<Record<string, string>>({});
   const [openReplyId, setOpenReplyId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editingReplyText, setEditingReplyText] = useState('');
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [feedStatus, setFeedStatus] = useState<LoadState>('loading');
   const [feedError, setFeedError] = useState<string | null>(null);
@@ -427,6 +434,24 @@ export default function BookDetailScreen() {
     };
   }, [routeId]);
 
+  useEffect(() => {
+    let isActive = true;
+    getUserId()
+      .then((id) => {
+        if (isActive) {
+          setCurrentUserId(id);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setCurrentUserId(null);
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const loadFeed = useCallback(
     async (options?: { reset?: boolean; isActive?: { current: boolean } }) => {
       if (!groupId) return;
@@ -440,7 +465,6 @@ export default function BookDetailScreen() {
       setFeedError(null);
 
       try {
-        const userId = await getUserId();
         const records = await getGroupRecords(groupId);
         const sorted = [...records].sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
@@ -449,8 +473,8 @@ export default function BookDetailScreen() {
         const mapped = await Promise.all(
           sorted.map(async (record): Promise<FeedItem> => {
             let comments: FeedComment[] = [];
-            let reactionsCount = 0;
-            let reactionsByUser = false;
+            let likeCount = 0;
+            let likedByUser = false;
 
             try {
               const recordComments = await getRecordComments(record.id);
@@ -465,16 +489,16 @@ export default function BookDetailScreen() {
             }
 
             try {
-              const reactions = await getRecordReactions(record.id);
-              reactionsCount = reactions.length;
-              if (userId) {
-                reactionsByUser = reactions.some((reaction) => reaction.userId === userId);
+              const cachedLike = await getRecordLikeState(record.id);
+              if (cachedLike) {
+                likeCount = cachedLike.likeCount;
+                likedByUser = cachedLike.liked;
               }
             } catch {
-              reactionsCount = 0;
+              likeCount = 0;
             }
 
-            if (reactionsByUser) {
+            if (likedByUser) {
               likedSet.add(record.id);
             }
 
@@ -490,7 +514,7 @@ export default function BookDetailScreen() {
               time: formatRelativeTime(String(record.createdAt)),
               image: { uri: record.imageUrl },
               caption: record.comment ?? '',
-              likes: reactionsCount,
+              likes: likeCount,
               comments,
               createdAt: formatDateKey(createdDate),
               source: 'remote',
@@ -531,6 +555,8 @@ export default function BookDetailScreen() {
         setSelectedPostId(null);
         setOpenReplyId(null);
         setReplyInputs({});
+        setEditingReplyId(null);
+        setEditingReplyText('');
         setFeedCommentText('');
         setCompleteError(null);
         setIsCompleting(false);
@@ -555,6 +581,8 @@ export default function BookDetailScreen() {
       setSelectedPostId(null);
       setOpenReplyId(null);
       setReplyInputs({});
+      setEditingReplyId(null);
+      setEditingReplyText('');
       setFeedCommentText('');
       setCompleteError(null);
       setIsCompleting(false);
@@ -575,6 +603,7 @@ export default function BookDetailScreen() {
                   name: comment.userNickname,
                   time: formatRelativeTime(String(comment.createdAt)),
                   text: comment.content,
+                  userId: comment.userId,
                 }));
               } catch {
                 replies = [];
@@ -717,6 +746,7 @@ export default function BookDetailScreen() {
                       name: created.userNickname,
                       time: formatRelativeTime(String(created.createdAt)),
                       text: created.content,
+                      userId: created.userId,
                     },
                   ],
                 }
@@ -735,7 +765,13 @@ export default function BookDetailScreen() {
                 ...sentence,
                 replies: [
                   ...(sentence.replies ?? []),
-                  { id: `r-${Date.now()}`, name: '나', time: '방금', text: message },
+                  {
+                    id: `r-${Date.now()}`,
+                    name: '나',
+                    time: '방금',
+                    text: message,
+                    userId: currentUserId ?? null,
+                  },
                 ],
               }
             : sentence,
@@ -745,6 +781,114 @@ export default function BookDetailScreen() {
 
     setReplyInputs((prev) => ({ ...prev, [sentenceId]: '' }));
     setOpenReplyId(null);
+  };
+
+  const handleStartEditReply = (reply: SentenceReply) => {
+    setEditingReplyId(reply.id);
+    setEditingReplyText(reply.text);
+    setOpenReplyId(null);
+  };
+
+  const handleCancelEditReply = () => {
+    setEditingReplyId(null);
+    setEditingReplyText('');
+  };
+
+  const handleSaveReply = async (sentenceId: string, replyId: string) => {
+    const message = editingReplyText.trim();
+    if (!message) {
+      Alert.alert('안내', '답글을 입력해 주세요.');
+      return;
+    }
+
+    const target = sentences.find((sentence) => sentence.id === sentenceId);
+    if (!target) {
+      return;
+    }
+
+    if (target.source === 'remote') {
+      try {
+        const updated = await updateSentenceComment(replyId, { content: message });
+        setSentences((prev) =>
+          prev.map((sentence) =>
+            sentence.id === sentenceId
+              ? {
+                  ...sentence,
+                  replies: (sentence.replies ?? []).map((reply) =>
+                    reply.id === replyId
+                      ? {
+                          ...reply,
+                          text: updated.content,
+                          time: formatRelativeTime(String(updated.createdAt)),
+                        }
+                      : reply,
+                  ),
+                }
+              : sentence,
+          ),
+        );
+      } catch (error) {
+        Alert.alert('안내', getErrorMessage(error, '답글 수정에 실패했어요.'));
+        return;
+      }
+    } else {
+      setSentences((prev) =>
+        prev.map((sentence) =>
+          sentence.id === sentenceId
+            ? {
+                ...sentence,
+                replies: (sentence.replies ?? []).map((reply) =>
+                  reply.id === replyId ? { ...reply, text: message } : reply,
+                ),
+              }
+            : sentence,
+        ),
+      );
+    }
+
+    setEditingReplyId(null);
+    setEditingReplyText('');
+  };
+
+  const handleDeleteReply = (sentenceId: string, replyId: string) => {
+    Alert.alert('답글 삭제', '이 답글을 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          const target = sentences.find((sentence) => sentence.id === sentenceId);
+          if (!target) {
+            return;
+          }
+
+          if (target.source === 'remote') {
+            try {
+              await deleteSentenceComment(replyId);
+            } catch (error) {
+              Alert.alert('안내', getErrorMessage(error, '답글 삭제에 실패했어요.'));
+              return;
+            }
+          }
+
+          setSentences((prev) =>
+            prev.map((sentence) =>
+              sentence.id === sentenceId
+                ? {
+                    ...sentence,
+                    replies: (sentence.replies ?? []).filter((reply) => reply.id !== replyId),
+                  }
+                : sentence,
+            ),
+          );
+
+          if (editingReplyId === replyId) {
+            setEditingReplyId(null);
+            setEditingReplyText('');
+          }
+        },
+      },
+    ]);
   };
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 160 + insets.bottom }],
@@ -1085,10 +1229,60 @@ export default function BookDetailScreen() {
                             </View>
                             <View style={styles.replyBody}>
                               <View style={styles.replyHeader}>
-                                <Text style={styles.replyName}>{reply.name}</Text>
-                                <Text style={styles.replyTime}>{reply.time}</Text>
+                                <View style={styles.replyHeaderLeft}>
+                                  <Text style={styles.replyName}>{reply.name}</Text>
+                                  <Text style={styles.replyTime}>{reply.time}</Text>
+                                </View>
+                                {currentUserId && reply.userId === currentUserId ? (
+                                  <View style={styles.replyActions}>
+                                    <Pressable
+                                      style={styles.replyActionButton}
+                                      onPress={() => handleStartEditReply(reply)}
+                                      accessibilityRole="button">
+                                      <Text style={styles.replyActionText}>수정</Text>
+                                    </Pressable>
+                                    <Pressable
+                                      style={styles.replyActionButton}
+                                      onPress={() => handleDeleteReply(item.id, reply.id)}
+                                      accessibilityRole="button">
+                                      <Text style={styles.replyActionText}>삭제</Text>
+                                    </Pressable>
+                                  </View>
+                                ) : null}
                               </View>
-                              <Text style={styles.replyText}>{reply.text}</Text>
+                              {editingReplyId === reply.id ? (
+                                <View style={styles.replyEditRow}>
+                                  <TextInput
+                                    value={editingReplyText}
+                                    onChangeText={setEditingReplyText}
+                                    placeholder="답글을 입력하세요..."
+                                    placeholderTextColor={Palette.textTertiary}
+                                    style={styles.replyEditInput}
+                                  />
+                                  <View style={styles.replyEditActions}>
+                                    <Pressable
+                                      style={styles.replyEditButton}
+                                      onPress={() => handleSaveReply(item.id, reply.id)}
+                                      accessibilityRole="button">
+                                      <Text style={styles.replyEditButtonText}>저장</Text>
+                                    </Pressable>
+                                    <Pressable
+                                      style={[styles.replyEditButton, styles.replyEditCancelButton]}
+                                      onPress={handleCancelEditReply}
+                                      accessibilityRole="button">
+                                      <Text
+                                        style={[
+                                          styles.replyEditButtonText,
+                                          styles.replyEditCancelText,
+                                        ]}>
+                                        취소
+                                      </Text>
+                                    </Pressable>
+                                  </View>
+                                </View>
+                              ) : (
+                                <Text style={styles.replyText}>{reply.text}</Text>
+                              )}
                             </View>
                           </View>
                         ))
@@ -1184,11 +1378,18 @@ export default function BookDetailScreen() {
       handleCompleteReading,
       handleLeaveGroup,
       handleAddReply,
+      handleCancelEditReply,
+      handleDeleteReply,
+      handleSaveReply,
+      handleStartEditReply,
       handleAddSentence,
       insets.bottom,
       isCompleting,
       isLeaving,
       isAddingSentence,
+      currentUserId,
+      editingReplyId,
+      editingReplyText,
       myEmoji,
       memberAvatarCount,
       openReplyId,
@@ -1273,24 +1474,49 @@ export default function BookDetailScreen() {
     submit();
   };
 
-  const handleToggleLike = (postId: string) => {
-    setLikedPostIds((prev) => {
-      const next = new Set(prev);
-      const isLiked = next.has(postId);
-      if (isLiked) {
-        next.delete(postId);
-      } else {
-        next.add(postId);
-      }
+  const handleToggleLike = async (postId: string) => {
+    const target = feedItems.find((item) => item.id === postId);
+    if (!target?.recordId) {
+      setLikedPostIds((prev) => {
+        const next = new Set(prev);
+        const isLiked = next.has(postId);
+        if (isLiked) {
+          next.delete(postId);
+        } else {
+          next.add(postId);
+        }
+        setFeedItems((items) =>
+          items.map((item) =>
+            item.id === postId
+              ? { ...item, likes: Math.max(0, item.likes + (isLiked ? -1 : 1)) }
+              : item,
+          ),
+        );
+        return next;
+      });
+      return;
+    }
+
+    try {
+      const result = await toggleRecordLike(target.recordId);
+      setLikedPostIds((prev) => {
+        const next = new Set(prev);
+        if (result.liked) {
+          next.add(postId);
+        } else {
+          next.delete(postId);
+        }
+        return next;
+      });
       setFeedItems((items) =>
         items.map((item) =>
-          item.id === postId
-            ? { ...item, likes: Math.max(0, item.likes + (isLiked ? -1 : 1)) }
-            : item,
+          item.id === postId ? { ...item, likes: result.likeCount } : item,
         ),
       );
-      return next;
-    });
+      await setRecordLikeState(target.recordId, result);
+    } catch (error) {
+      Alert.alert('안내', getErrorMessage(error, '좋아요 처리에 실패했어요.'));
+    }
   };
 
   const handlePickPhoto = async () => {
@@ -2170,6 +2396,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  replyHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
   replyName: {
     fontSize: 12,
     fontWeight: '600',
@@ -2179,11 +2410,62 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Palette.textTertiary,
   },
+  replyActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+  },
+  replyActionButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  replyActionText: {
+    fontSize: 11,
+    color: Palette.textSecondary,
+    fontWeight: '600',
+  },
   replyText: {
     marginTop: 4,
     fontSize: 12,
     color: Palette.textSecondary,
     lineHeight: 18,
+  },
+  replyEditRow: {
+    marginTop: 6,
+    backgroundColor: Palette.background,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  replyEditInput: {
+    fontSize: 12,
+    color: Palette.textPrimary,
+  },
+  replyEditActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    columnGap: 10,
+    marginTop: 6,
+  },
+  replyEditButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: Palette.accentSoft,
+  },
+  replyEditCancelButton: {
+    backgroundColor: Palette.surface,
+    borderWidth: 1,
+    borderColor: Palette.border,
+  },
+  replyEditButtonText: {
+    fontSize: 11,
+    color: Palette.accent,
+    fontWeight: '600',
+  },
+  replyEditCancelText: {
+    color: Palette.textSecondary,
   },
   replyEmptyText: {
     fontSize: 12,

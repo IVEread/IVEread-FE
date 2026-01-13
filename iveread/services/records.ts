@@ -79,3 +79,14 @@ export async function createRecordReaction(
     body: payload,
   });
 }
+
+export async function toggleRecordLike(
+  recordId: string
+): Promise<{ liked: boolean; likeCount: number }> {
+  return request<{ liked: boolean; likeCount: number }>(
+    `/api/records/${encodeURIComponent(recordId)}/likes`,
+    {
+      method: 'POST',
+    },
+  );
+}
