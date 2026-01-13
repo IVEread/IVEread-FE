@@ -15,18 +15,23 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { getPersonEmoji } from '@/constants/people';
 import { useFriends } from '@/contexts/friends-context';
+import { useProfile } from '@/contexts/profile-context';
 import { ApiClientError } from '@/services/api-client';
 
 export default function FriendsScreen() {
   const router = useRouter();
-  const { friends, status, error, refreshFriends, addFriend } = useFriends();
+  const { friends, status, error, refreshFriends, addFriend, removeFriend } = useFriends();
+  const { profile } = useProfile();
   const insets = useSafeAreaInsets();
   const [newFriend, setNewFriend] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
+  const [isCopied, setIsCopied] = useState(false);
   const friendsIllustration = require('../assets/images/image-Photoroom3.png');
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 160 + insets.bottom }],
@@ -46,7 +51,7 @@ export default function FriendsScreen() {
   const handleAddFriend = async () => {
     const trimmed = newFriend.trim();
     if (!trimmed) {
-      Alert.alert('안내', '추가할 친구 아이디(이메일)를 입력해 주세요.');
+      Alert.alert('안내', '추가할 친구 ID 또는 이메일을 입력해 주세요.');
       return;
     }
     try {
@@ -54,10 +59,49 @@ export default function FriendsScreen() {
       await addFriend(trimmed);
       setNewFriend('');
     } catch (err) {
-      Alert.alert('안내', getErrorMessage(err, '친구 추가에 실패했어요.'));
+      if (err instanceof ApiClientError && (err.status === 404 || err.code === 'USER_NOT_FOUND')) {
+        Alert.alert('안내', '존재하지 않는 친구 ID예요. ID를 확인해 주세요.');
+      } else {
+        Alert.alert('안내', getErrorMessage(err, '친구 추가에 실패했어요.'));
+      }
     } finally {
       setIsAdding(false);
     }
+  };
+
+  const handleCopyId = async () => {
+    if (!profile.id) return;
+    try {
+      await Clipboard.setStringAsync(profile.id);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 1200);
+    } catch {
+      Alert.alert('안내', '복사에 실패했어요.');
+    }
+  };
+
+  const handleRemoveFriend = (friendId: string, name: string) => {
+    Alert.alert('친구 삭제', `${name}님을 친구 목록에서 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          setRemovingIds((prev) => new Set(prev).add(friendId));
+          try {
+            await removeFriend(friendId);
+          } catch (err) {
+            Alert.alert('안내', getErrorMessage(err, '친구 삭제에 실패했어요.'));
+          } finally {
+            setRemovingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(friendId);
+              return next;
+            });
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -85,12 +129,25 @@ export default function FriendsScreen() {
         </View>
 
         <View style={styles.addRow}>
+          <View style={styles.myIdCard}>
+            <Text style={styles.myIdLabel}>내 ID</Text>
+            <View style={styles.myIdRow}>
+              <Text style={styles.myIdValue}>{profile.id || '불러오는 중...'}</Text>
+              <Pressable
+                style={styles.copyButton}
+                onPress={handleCopyId}
+                accessibilityRole="button"
+                disabled={!profile.id}>
+                <Text style={styles.copyButtonText}>{isCopied ? '복사됨' : '복사'}</Text>
+              </Pressable>
+            </View>
+          </View>
             <Text style={styles.label}>친구 추가</Text>
             <View style={styles.inputRow}>
               <TextInput
                 value={newFriend}
                 onChangeText={setNewFriend}
-                placeholder="친구 아이디(이메일)"
+                placeholder="친구 ID 또는 이메일"
                 placeholderTextColor={Palette.textTertiary}
                 style={styles.input}
                 returnKeyType="done"
@@ -139,15 +196,28 @@ export default function FriendsScreen() {
           {status === 'success' &&
             friends.map((friend) => {
               const displayName = friend.nickname?.trim() || friend.email || '친구';
+              const avatarEmoji = friend.userProfileEmoji || getPersonEmoji(displayName);
+              const isRemoving = Boolean(friend.id && removingIds.has(friend.id));
               return (
                 <View key={friend.id ?? friend.email} style={styles.friendCard}>
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{getPersonEmoji(displayName)}</Text>
+                    <Text style={styles.avatarText}>{avatarEmoji}</Text>
                   </View>
-                  <View>
+                  <View style={styles.friendBody}>
                     <Text style={styles.friendName}>{displayName}</Text>
                     <Text style={styles.friendMeta}>{friend.email}</Text>
                   </View>
+                  {friend.id ? (
+                    <Pressable
+                      style={[styles.removeButton, isRemoving && styles.removeButtonDisabled]}
+                      onPress={() => handleRemoveFriend(friend.id, displayName)}
+                      accessibilityRole="button"
+                      disabled={isRemoving}>
+                      <Text style={styles.removeButtonText}>
+                        {isRemoving ? '삭제 중' : '삭제'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               );
             })}
@@ -202,6 +272,41 @@ const styles = StyleSheet.create({
   },
   addRow: {
     marginBottom: 20,
+  },
+  myIdCard: {
+    backgroundColor: Palette.surface,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    marginBottom: 10,
+  },
+  myIdLabel: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+    marginBottom: 4,
+  },
+  myIdValue: {
+    fontSize: 12,
+    color: Palette.textPrimary,
+    fontWeight: '600',
+  },
+  myIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  copyButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: Palette.accentSoft,
+  },
+  copyButtonText: {
+    fontSize: 11,
+    color: Palette.textSecondary,
+    fontWeight: '700',
   },
   label: {
     fontSize: 12,
@@ -315,5 +420,22 @@ const styles = StyleSheet.create({
   friendMeta: {
     ...Typography.caption,
     marginTop: 4,
+  },
+  friendBody: {
+    flex: 1,
+  },
+  removeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Palette.accentSoft,
+  },
+  removeButtonDisabled: {
+    opacity: 0.6,
+  },
+  removeButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Palette.textSecondary,
   },
 });

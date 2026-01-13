@@ -1,10 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { ApiClientError } from '@/services/api-client';
-import { addFriendByEmail, getFriends } from '@/services/friends';
-import type { UserProfile } from '@/types/user';
-
-export type Friend = UserProfile;
+import { addFriend, getFriends, removeFriend } from '@/services/friends';
+import type { Friend } from '@/types/friend';
 
 type LoadState = 'loading' | 'success' | 'error';
 
@@ -13,7 +11,8 @@ type FriendsContextValue = {
   status: LoadState;
   error: string | null;
   refreshFriends: () => Promise<void>;
-  addFriend: (email: string) => Promise<void>;
+  addFriend: (target: string) => Promise<void>;
+  removeFriend: (targetId: string) => Promise<void>;
 };
 
 const FriendsContext = createContext<FriendsContextValue | undefined>(undefined);
@@ -47,11 +46,19 @@ export function FriendsProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const addFriend = useCallback(
-    async (email: string) => {
-      const trimmed = email.trim();
+  const handleAddFriend = useCallback(
+    async (target: string) => {
+      const trimmed = target.trim();
       if (!trimmed) return;
-      await addFriendByEmail(trimmed);
+      await addFriend(trimmed);
+      await refreshFriends();
+    },
+    [refreshFriends],
+  );
+
+  const removeFriendById = useCallback(
+    async (targetId: string) => {
+      await removeFriend(targetId);
       await refreshFriends();
     },
     [refreshFriends],
@@ -62,8 +69,15 @@ export function FriendsProvider({ children }: { children: React.ReactNode }) {
   }, [refreshFriends]);
 
   const value = useMemo(
-    () => ({ friends, status, error, refreshFriends, addFriend }),
-    [friends, status, error, refreshFriends, addFriend],
+    () => ({
+      friends,
+      status,
+      error,
+      refreshFriends,
+      addFriend: handleAddFriend,
+      removeFriend: removeFriendById,
+    }),
+    [friends, status, error, refreshFriends, handleAddFriend, removeFriendById],
   );
 
   return <FriendsContext.Provider value={value}>{children}</FriendsContext.Provider>;

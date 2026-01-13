@@ -1,13 +1,24 @@
 import { request } from '@/services/api-client';
-import type { UserProfile } from '@/types/user';
+import type { Friend } from '@/types/friend';
 
-export async function getFriends(): Promise<UserProfile[]> {
-  return request<UserProfile[]>('/api/friends');
+export async function getFriends(): Promise<Friend[]> {
+  return request<Friend[]>('/api/friends');
 }
 
-export async function addFriendByEmail(email: string): Promise<void> {
+const isEmail = (value: string) => value.includes('@');
+
+export async function addFriend(target: string): Promise<void> {
   await request<unknown>('/api/friends', {
     method: 'POST',
-    body: { email },
+    body: isEmail(target)
+      ? { email: target, action: 'add' }
+      : { targetId: target, action: 'add' },
+  });
+}
+
+export async function removeFriend(targetId: string): Promise<void> {
+  await request<null>('/api/friends', {
+    method: 'POST',
+    body: { targetId, action: 'remove' },
   });
 }
