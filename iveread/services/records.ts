@@ -90,3 +90,7 @@ export async function toggleRecordLike(
     },
   );
 }
+
+export async function getRecordLikeCount(recordId: string): Promise<{ likeCount: number }> {
+  return request<{ likeCount: number }>(`/api/records/${encodeURIComponent(recordId)}/likes`);
+}

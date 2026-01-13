@@ -33,6 +33,7 @@ import {
   createRecord,
   createRecordComment,
   getGroupRecords,
+  getRecordLikeCount,
   getRecordComments,
   toggleRecordLike,
 } from '@/services/records';
@@ -491,8 +492,15 @@ export default function BookDetailScreen() {
             try {
               const cachedLike = await getRecordLikeState(record.id);
               if (cachedLike) {
-                likeCount = cachedLike.likeCount;
                 likedByUser = cachedLike.liked;
+              }
+              const likeResult = await getRecordLikeCount(record.id);
+              likeCount = likeResult.likeCount;
+              if (cachedLike) {
+                await setRecordLikeState(record.id, {
+                  liked: cachedLike.liked,
+                  likeCount,
+                });
               }
             } catch {
               likeCount = 0;
@@ -889,6 +897,58 @@ export default function BookDetailScreen() {
         },
       },
     ]);
+  };
+  const handleLeaveGroup = useCallback(() => {
+    if (isLeaving || isCompleting) {
+      return;
+    }
+    if (!groupId) {
+      Alert.alert('안내', '교환독서 정보를 불러온 뒤 나갈 수 있어요.');
+      return;
+    }
+
+    Alert.alert('그룹 나가기', '정말 이 그룹에서 나가시겠어요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '나가기',
+        style: 'destructive',
+        onPress: () => {
+          setIsLeaving(true);
+          leaveGroup(groupId)
+            .then(() => {
+              router.replace('/(tabs)');
+            })
+            .catch((error) => {
+              const message = getErrorMessage(error, '그룹 나가기에 실패했어요.');
+              Alert.alert('안내', message);
+            })
+            .finally(() => {
+              setIsLeaving(false);
+            });
+        },
+      },
+    ]);
+  }, [groupId, isLeaving, isCompleting, router]);
+
+  const handleCompleteReading = async () => {
+    if (isCompleting) return;
+    if (!groupId) {
+      Alert.alert('안내', '교환독서 정보를 불러온 뒤 완료할 수 있어요.');
+      return;
+    }
+
+    setIsCompleting(true);
+    setCompleteError(null);
+    try {
+      await leaveGroup(groupId);
+      router.replace('/(tabs)');
+    } catch (error) {
+      const message = getErrorMessage(error, '완독 처리에 실패했어요.');
+      setCompleteError(message);
+      Alert.alert('안내', message);
+    } finally {
+      setIsCompleting(false);
+    }
   };
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 160 + insets.bottom }],
@@ -1554,59 +1614,6 @@ export default function BookDetailScreen() {
         setSelectedUploadUri(uri);
         setSelectedUploadImage(null);
       }
-    }
-  };
-
-  const handleLeaveGroup = useCallback(() => {
-    if (isLeaving || isCompleting) {
-      return;
-    }
-    if (!groupId) {
-      Alert.alert('안내', '교환독서 정보를 불러온 뒤 나갈 수 있어요.');
-      return;
-    }
-
-    Alert.alert('그룹 나가기', '정말 이 그룹에서 나가시겠어요?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '나가기',
-        style: 'destructive',
-        onPress: () => {
-          setIsLeaving(true);
-          leaveGroup(groupId)
-            .then(() => {
-              router.replace('/(tabs)');
-            })
-            .catch((error) => {
-              const message = getErrorMessage(error, '그룹 나가기에 실패했어요.');
-              Alert.alert('안내', message);
-            })
-            .finally(() => {
-              setIsLeaving(false);
-            });
-        },
-      },
-    ]);
-  }, [groupId, isLeaving, isCompleting, router]);
-
-  const handleCompleteReading = async () => {
-    if (isCompleting) return;
-    if (!groupId) {
-      Alert.alert('안내', '교환독서 정보를 불러온 뒤 완료할 수 있어요.');
-      return;
-    }
-
-    setIsCompleting(true);
-    setCompleteError(null);
-    try {
-      await leaveGroup(groupId);
-      router.replace('/(tabs)');
-    } catch (error) {
-      const message = getErrorMessage(error, '완독 처리에 실패했어요.');
-      setCompleteError(message);
-      Alert.alert('안내', message);
-    } finally {
-      setIsCompleting(false);
     }
   };
 
