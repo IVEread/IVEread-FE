@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { useFriends } from '@/contexts/friends-context';
 import { useProfile } from '@/contexts/profile-context';
+import { logout } from '@/services/auth';
 import { getFinishedBooks, getGroups } from '@/services/groups';
 import { ApiClientError } from '@/services/api-client';
 
@@ -25,15 +26,28 @@ const profileSections = [
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { profile, updateProfile } = useProfile();
-  const { friends } = useFriends();
+  const { profile, updateProfile, resetProfile } = useProfile();
+  const { friends, resetFriends } = useFriends();
   const [activeCount, setActiveCount] = useState(0);
   const [finishedCount, setFinishedCount] = useState(0);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const avatarLabel = profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '?');
+  const displayName = profile.nickname?.trim() || '사용자';
   const friendCount = friends.length;
   const recordCount = activeCount;
   const completedCount = finishedCount;
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      // Best-effort logout, still clear local state.
+    } finally {
+      resetProfile();
+      resetFriends();
+      router.replace('/login');
+    }
+  }, [resetFriends, resetProfile, router]);
 
   const loadCounts = useCallback(async (isActiveRef?: { current: boolean }) => {
     try {
@@ -186,7 +200,7 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{profile.nickname}</Text>
+            <Text style={styles.profileName}>{displayName}</Text>
             <Text style={styles.profileMeta}>오늘도 한 페이지, 꾸준한 독서 중</Text>
             <View style={styles.profileStats}>
               <View style={styles.statItem}>
@@ -210,6 +224,7 @@ export default function ProfileScreen() {
           {profileSections.map((section) => {
             const isProfile = section.id === 'profile';
             const isFriends = section.id === 'friends';
+            const isInsights = section.id === 'insights';
             return (
               <Pressable
                 key={section.id}
@@ -221,9 +236,13 @@ export default function ProfileScreen() {
                   }
                   if (isFriends) {
                     router.push('/friends');
+                    return;
+                  }
+                  if (isInsights) {
+                    router.push('/reading-insights');
                   }
                 }}
-                accessibilityRole={isProfile || isFriends ? 'button' : undefined}>
+                accessibilityRole={isProfile || isFriends || isInsights ? 'button' : undefined}>
                 <View>
                   <Text style={styles.sectionCardTitle}>{section.title}</Text>
                   <Text style={styles.sectionCardDetail}>{section.detail}</Text>
@@ -236,7 +255,7 @@ export default function ProfileScreen() {
 
         <Pressable
           style={styles.logoutButton}
-          onPress={() => router.replace('/login')}
+          onPress={handleLogout}
           accessibilityRole="button">
           <Text style={styles.logoutButtonText}>로그아웃</Text>
         </Pressable>

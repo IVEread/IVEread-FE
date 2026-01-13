@@ -28,6 +28,7 @@ export default function RootLayout() {
                 <Stack.Screen name="profile-edit" options={{ headerShown: false }} />
                 <Stack.Screen name="password-reset" options={{ headerShown: false }} />
                 <Stack.Screen name="friends" options={{ headerShown: false }} />
+                <Stack.Screen name="reading-insights" options={{ headerShown: false }} />
                 <Stack.Screen name="add-record" options={{ headerShown: false }} />
                 <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
               </Stack>

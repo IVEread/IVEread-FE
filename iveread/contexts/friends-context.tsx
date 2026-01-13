@@ -13,6 +13,7 @@ type FriendsContextValue = {
   refreshFriends: () => Promise<void>;
   addFriend: (target: string) => Promise<void>;
   removeFriend: (targetId: string) => Promise<void>;
+  resetFriends: () => void;
 };
 
 const FriendsContext = createContext<FriendsContextValue | undefined>(undefined);
@@ -64,6 +65,12 @@ export function FriendsProvider({ children }: { children: React.ReactNode }) {
     [refreshFriends],
   );
 
+  const resetFriends = useCallback(() => {
+    setFriends([]);
+    setStatus('loading');
+    setError(null);
+  }, []);
+
   useEffect(() => {
     refreshFriends();
   }, [refreshFriends]);
@@ -76,8 +83,9 @@ export function FriendsProvider({ children }: { children: React.ReactNode }) {
       refreshFriends,
       addFriend: handleAddFriend,
       removeFriend: removeFriendById,
+      resetFriends,
     }),
-    [friends, status, error, refreshFriends, handleAddFriend, removeFriendById],
+    [friends, status, error, refreshFriends, handleAddFriend, removeFriendById, resetFriends],
   );
 
   return <FriendsContext.Provider value={value}>{children}</FriendsContext.Provider>;

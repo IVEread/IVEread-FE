@@ -21,6 +21,7 @@ const MAPPING = {
   'plus': 'add',
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
+  'chevron.left': 'chevron-left',
   'chevron.right': 'chevron-right',
 } as IconMapping;
 

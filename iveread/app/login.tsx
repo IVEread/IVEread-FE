@@ -20,6 +20,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router';
 
 import { Palette, Shadows, Typography } from '@/constants/ui';
+import { useFriends } from '@/contexts/friends-context';
+import { useProfile } from '@/contexts/profile-context';
 import { login } from '@/services/auth';
 import { ApiClientError } from '@/services/api-client';
 
@@ -35,6 +37,8 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { refreshProfile } = useProfile();
+  const { refreshFriends } = useFriends();
 
   const scrollToInput = useCallback((inputRef: React.RefObject<TextInput | null>) => {
     const scrollView = scrollViewRef.current;
@@ -88,6 +92,7 @@ export default function LoginScreen() {
     try {
       setIsSubmitting(true);
       await login({ email: trimmedEmail, password });
+      await Promise.all([refreshProfile().catch(() => {}), refreshFriends().catch(() => {})]);
       router.replace('/(tabs)');
     } catch (error) {
       const message =
