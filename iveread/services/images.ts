@@ -10,19 +10,26 @@ type UploadImageInput = {
   mimeType?: string | null;
 };
 
-const getUploadOrigin = () => {
-  const baseUrl = getApiBaseUrl();
-  const match = baseUrl.match(/^https?:\/\/[^/]+/i);
-  return match ? match[0] : baseUrl;
-};
+const isLocalhost = (hostname: string) =>
+  hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
 
 export const normalizeUploadUrl = (url: string) => {
-  if (/^https?:\/\//i.test(url)) {
+  const baseUrl = getApiBaseUrl();
+  try {
+    const base = new URL(baseUrl);
+    const resolved = new URL(url, baseUrl);
+    const isRelative = !/^https?:\/\//i.test(url);
+    const shouldNormalizeHost =
+      isRelative || isLocalhost(resolved.hostname) || resolved.hostname === base.hostname;
+    if (shouldNormalizeHost) {
+      resolved.protocol = base.protocol;
+      resolved.hostname = base.hostname;
+      resolved.port = '';
+    }
+    return resolved.toString();
+  } catch {
     return url;
   }
-  const origin = getUploadOrigin();
-  const prefix = url.startsWith('/') ? '' : '/';
-  return `${origin}${prefix}${url}`;
 };
 
 const getFileName = (uri: string, fallbackMimeType?: string | null) => {
