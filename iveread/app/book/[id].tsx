@@ -37,6 +37,7 @@ import {
   getRecordComments,
   toggleRecordLike,
 } from '@/services/records';
+import { uploadImage } from '@/services/images';
 import { getRecordLikeState, setRecordLikeState } from '@/services/record-likes';
 import {
   createSentence,
@@ -257,7 +258,8 @@ export default function BookDetailScreen() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadCaption, setUploadCaption] = useState('');
   const [selectedUploadImage, setSelectedUploadImage] = useState<ImageSourcePropType | null>(null);
-  const [selectedUploadUri, setSelectedUploadUri] = useState<string | null>(null);
+  const [selectedUploadAsset, setSelectedUploadAsset] =
+    useState<ImagePicker.ImagePickerAsset | null>(null);
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [feedCommentText, setFeedCommentText] = useState('');
   const [selectedWeek, setSelectedWeek] = useState<'current' | 'previous'>('current');
@@ -1504,17 +1506,17 @@ export default function BookDetailScreen() {
     [feedItems, selectedPostId],
   );
   const selectedUploadSource = useMemo(() => {
-    if (selectedUploadUri) {
-      return { uri: selectedUploadUri };
+    if (selectedUploadAsset?.uri) {
+      return { uri: selectedUploadAsset.uri };
     }
     if (selectedUploadImage) {
       return selectedUploadImage;
     }
     return null;
-  }, [selectedUploadImage, selectedUploadUri]);
+  }, [selectedUploadAsset, selectedUploadImage]);
 
-  const handleUploadFeed = () => {
-    if (!selectedUploadImage && !selectedUploadUri) {
+  const handleUploadFeed = async () => {
+    if (!selectedUploadImage && !selectedUploadAsset) {
       Alert.alert('안내', '사진을 선택해 주세요.');
       return;
     }
@@ -1528,7 +1530,27 @@ export default function BookDetailScreen() {
       return;
     }
 
-    const imageUrl = resolveImageUrl(selectedUploadImage, selectedUploadUri);
+    let imageUrl: string | null = null;
+    if (selectedUploadAsset?.uri) {
+      try {
+        imageUrl = await uploadImage({
+          uri: selectedUploadAsset.uri,
+          name: selectedUploadAsset.fileName,
+          mimeType: selectedUploadAsset.mimeType,
+        });
+      } catch (error) {
+        /*
+        Alert.alert(
+          '?ˆë‚´',
+          getErrorMessage(error, '?´ë?ì§€ ?…ë¡œ?œì— ?¤íŒ¨?ˆì–´??'),
+        );
+        */
+        Alert.alert('Notice', getErrorMessage(error, 'Image upload failed.'));
+        return;
+      }
+    } else {
+      imageUrl = resolveImageUrl(selectedUploadImage, null);
+    }
     if (!imageUrl) {
       Alert.alert('안내', '이미지 주소를 불러올 수 없어요. 다시 선택해 주세요.');
       return;
@@ -1546,7 +1568,7 @@ export default function BookDetailScreen() {
         });
         await loadFeed({ reset: true });
         setSelectedUploadImage(null);
-        setSelectedUploadUri(null);
+        setSelectedUploadAsset(null);
         setUploadCaption('');
         setIsUploadOpen(false);
       } catch (error) {
@@ -1613,9 +1635,9 @@ export default function BookDetailScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      const uri = result.assets?.[0]?.uri;
-      if (uri) {
-        setSelectedUploadUri(uri);
+      const asset = result.assets?.[0] ?? null;
+      if (asset?.uri) {
+        setSelectedUploadAsset(asset);
         setSelectedUploadImage(null);
       }
     }
@@ -1632,9 +1654,9 @@ export default function BookDetailScreen() {
       quality: 0.8,
     });
     if (!result.canceled) {
-      const uri = result.assets?.[0]?.uri;
-      if (uri) {
-        setSelectedUploadUri(uri);
+      const asset = result.assets?.[0] ?? null;
+      if (asset?.uri) {
+        setSelectedUploadAsset(asset);
         setSelectedUploadImage(null);
       }
     }
@@ -1893,7 +1915,7 @@ export default function BookDetailScreen() {
                                 key={`upload-${index}`}
                                 onPress={() => {
                                   setSelectedUploadImage(item);
-                                  setSelectedUploadUri(null);
+                                  setSelectedUploadAsset(null);
                                 }}
                                 style={[styles.uploadImageOption, isActive && styles.uploadImageActive]}
                                 accessibilityRole="button">

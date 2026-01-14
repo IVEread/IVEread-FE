@@ -25,7 +25,7 @@ type RequestOptions = {
   auth?: boolean;
 };
 
-const getApiBaseUrl = () => {
+export const getApiBaseUrl = () => {
   const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
   if (!baseUrl) {
     throw new Error('EXPO_PUBLIC_API_BASE_URL is not set');
@@ -66,6 +66,9 @@ const extractApiError = (payload: unknown): ApiError | null => {
   };
 };
 
+const isFormData = (body: unknown): body is FormData =>
+  typeof FormData !== 'undefined' && body instanceof FormData;
+
 const parseJson = async (response: Response) => {
   const text = await response.text();
   if (!text) return null;
@@ -92,8 +95,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   const init: RequestInit = { method, headers };
   if (options.body !== undefined) {
-    headers['Content-Type'] = 'application/json';
-    init.body = JSON.stringify(options.body);
+    if (isFormData(options.body)) {
+      init.body = options.body;
+    } else {
+      headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(options.body);
+    }
   }
 
   const response = await fetch(buildUrl(path, options.query), init);
