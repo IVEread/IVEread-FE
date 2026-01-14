@@ -451,6 +451,18 @@ export default function BookDetailScreen() {
         }
       }
 
+      if (resolvedGroup && !resolvedGroup.members) {
+        try {
+          const detail = await getGroup(resolvedGroup.id);
+          resolvedGroup = {
+            ...resolvedGroup,
+            members: detail.members ?? resolvedGroup.members,
+          };
+        } catch {
+          // Keep base group info if member fetch fails.
+        }
+      }
+
       if (!isActiveRef.current) return;
 
       if (resolvedBook) {
