@@ -66,8 +66,13 @@ const extractApiError = (payload: unknown): ApiError | null => {
   };
 };
 
-const isFormData = (body: unknown): body is FormData =>
-  typeof FormData !== 'undefined' && body instanceof FormData;
+const isFormData = (body: unknown): body is FormData => {
+  if (!body || typeof body !== 'object') return false;
+  if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    return true;
+  }
+  return typeof (body as { append?: unknown }).append === 'function';
+};
 
 const parseJson = async (response: Response) => {
   const text = await response.text();
