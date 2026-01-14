@@ -20,6 +20,7 @@ export default function ReadingInsightsScreen() {
   const [insights, setInsights] = useState<InsightsResponse | null>(null);
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadInsights = useCallback(async (isActiveRef?: { current: boolean }) => {
     setIsLoading(true);
@@ -82,6 +83,29 @@ export default function ReadingInsightsScreen() {
       ]
     : [];
 
+  const handleRefreshSummary = useCallback(async () => {
+    if (!insights || isLoading || isRefreshing) return;
+    const previousSummary = summaryText;
+    setIsRefreshing(true);
+    try {
+      const aiSummary = await fetchInsightsAISummary(insights, { refresh: true });
+      const normalizedSummary = aiSummary.trim() || buildInsightsFallbackSummary(insights);
+      setSummaryText(normalizedSummary);
+    } catch (error) {
+      const fallbackSummary = previousSummary || buildInsightsFallbackSummary(insights);
+      setSummaryText(fallbackSummary);
+      const message =
+        error instanceof ApiClientError
+          ? error.message
+          : 'AI 요약을 다시 생성하지 못했어요.';
+      console.warn(message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [insights, isLoading, isRefreshing, summaryText]);
+
+  const isRefreshDisabled = !insights || isLoading || isRefreshing;
+
   useFocusEffect(
     useCallback(() => {
       const isActive = { current: true };
@@ -121,13 +145,23 @@ export default function ReadingInsightsScreen() {
           <Text style={styles.summaryBody}>
             {isLoading
               ? '요약을 불러오는 중이에요.'
-              : insightsError
-                ? insightsError
-                : summaryText
-                  ? summaryText
-                  : '표시할 요약이 없어요.'}
+              : isRefreshing
+                ? 'AI 요약을 다시 생성 중이에요.'
+                : insightsError
+                  ? insightsError
+                  : summaryText
+                    ? summaryText
+                    : '표시할 요약이 없어요.'}
           </Text>
           <Text style={styles.summaryFootnote}>기록을 바탕으로 한 차분한 해석이에요.</Text>
+          <Pressable
+            onPress={handleRefreshSummary}
+            disabled={isRefreshDisabled}
+            style={[styles.refreshButton, isRefreshDisabled && styles.refreshButtonDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel="AI 요약 다시 생성">
+            <Text style={styles.refreshButtonText}>AI 요약 다시 생성</Text>
+          </Pressable>
         </View>
 
         <View style={styles.section}>
@@ -226,6 +260,24 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     color: Palette.textTertiary,
     marginTop: 12,
+  },
+  refreshButton: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    backgroundColor: Palette.surface,
+  },
+  refreshButtonDisabled: {
+    opacity: 0.5,
+  },
+  refreshButtonText: {
+    ...Typography.caption,
+    color: Palette.textSecondary,
+    fontWeight: '600',
   },
   aiBadge: {
     flexDirection: 'row',

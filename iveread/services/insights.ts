@@ -17,10 +17,14 @@ const normalizeInsightsSummary = (payload: string | InsightsAISummaryPayload) =>
   return '';
 };
 
-export async function fetchInsightsAISummary(insights: InsightsResponse): Promise<string> {
+export async function fetchInsightsAISummary(
+  insights: InsightsResponse,
+  options?: { refresh?: boolean },
+): Promise<string> {
   const payload = await request<string | InsightsAISummaryPayload>('/api/insights/ai-summary', {
     method: 'POST',
     body: insights,
+    query: options?.refresh ? { refresh: true } : undefined,
   });
   return normalizeInsightsSummary(payload);
 }
