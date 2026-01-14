@@ -37,7 +37,7 @@ import {
   getRecordComments,
   toggleRecordLike,
 } from '@/services/records';
-import { uploadImage } from '@/services/images';
+import { normalizeUploadUrl, uploadImage } from '@/services/images';
 import { getRecordLikeState, setRecordLikeState } from '@/services/record-likes';
 import {
   createSentence,
@@ -543,7 +543,7 @@ export default function BookDetailScreen() {
               recordId: record.id,
               name: record.userNickname,
               time: formatRelativeTime(String(record.createdAt)),
-              image: { uri: record.imageUrl },
+              image: { uri: normalizeUploadUrl(record.imageUrl) },
               caption: record.comment ?? '',
               likes: likeCount,
               comments,

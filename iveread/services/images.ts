@@ -16,7 +16,7 @@ const getUploadOrigin = () => {
   return match ? match[0] : baseUrl;
 };
 
-const normalizeUploadUrl = (url: string) => {
+export const normalizeUploadUrl = (url: string) => {
   if (/^https?:\/\//i.test(url)) {
     return url;
   }
