@@ -11,9 +11,9 @@ export type GroupBookOption = {
   id: string;
   title: string;
   cover: ImageSourcePropType;
-  isbn?: string;
+  isbn: string | undefined;
   groupId: string;
-  coverUrl?: string;
+  coverUrl: string | undefined;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {

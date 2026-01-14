@@ -5,6 +5,12 @@ export async function getGroups(): Promise<Group[]> {
   return request<Group[]>('/api/groups');
 }
 
+export async function searchGroups(query: string): Promise<Group[]> {
+  return request<Group[]>('/api/groups/search', {
+    query: { query },
+  });
+}
+
 export async function getGroup(groupId: string): Promise<Group> {
   return request<Group>(`/api/groups/${encodeURIComponent(groupId)}`);
 }

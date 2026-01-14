@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -21,13 +22,14 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Palette, Shadows, Typography } from '@/constants/ui';
 import { ApiClientError } from '@/services/api-client';
 import { getBookByIsbn, searchBooks } from '@/services/books';
-import { getFinishedBooks, getGroups } from '@/services/groups';
+import { getFinishedBooks, getGroups, joinGroup, searchGroups } from '@/services/groups';
 import type { FinishedGroup, Group } from '@/types/group';
 
 const FALLBACK_AUTHOR = '지은이 정보 없음';
 const FALLBACK_PUBLISHER = '출판사 정보 없음';
 type LoadState = 'loading' | 'success' | 'error';
 type FinishedLoadState = LoadState;
+type SearchState = 'idle' | LoadState;
 
 type GroupCard = {
   id: string;
@@ -38,6 +40,7 @@ type GroupCard = {
   tags: string[];
   lastActive: string;
   cover: ImageSourcePropType;
+  memberCount: number;
 };
 
 const formatRelativeTime = (value: string) => {
@@ -63,34 +66,40 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
-const mapGroupToCard = async (group: Group): Promise<GroupCard> => {
+const mapGroupToCard = async (
+  group: Group,
+  options: { enrich?: boolean } = {},
+): Promise<GroupCard> => {
+  const shouldEnrich = options.enrich !== false;
   let author = FALLBACK_AUTHOR;
   let tag = FALLBACK_PUBLISHER;
   let tags: string[] = [];
   let cover: ImageSourcePropType = { uri: group.bookCover };
 
-  try {
-    const book = await getBookByIsbn(group.bookIsbn);
-    author = book.author || FALLBACK_AUTHOR;
-    tag = book.publisher || FALLBACK_PUBLISHER;
-    tags = book.publisher ? [book.publisher] : [];
-    if (book.coverImage) {
-      cover = { uri: book.coverImage };
-    }
-  } catch {
+  if (shouldEnrich) {
     try {
-      const search = await searchBooks(group.bookTitle, 1, 1);
-      const book = search.items[0];
-      if (book) {
-        author = book.author || FALLBACK_AUTHOR;
-        tag = book.publisher || FALLBACK_PUBLISHER;
-        tags = book.publisher ? [book.publisher] : [];
-        if (book.coverImage) {
-          cover = { uri: book.coverImage };
-        }
+      const book = await getBookByIsbn(group.bookIsbn);
+      author = book.author || FALLBACK_AUTHOR;
+      tag = book.publisher || FALLBACK_PUBLISHER;
+      tags = book.publisher ? [book.publisher] : [];
+      if (book.coverImage) {
+        cover = { uri: book.coverImage };
       }
     } catch {
-      // ignore search errors; fallback to group data only
+      try {
+        const search = await searchBooks(group.bookTitle, 1, 1);
+        const book = search.items[0];
+        if (book) {
+          author = book.author || FALLBACK_AUTHOR;
+          tag = book.publisher || FALLBACK_PUBLISHER;
+          tags = book.publisher ? [book.publisher] : [];
+          if (book.coverImage) {
+            cover = { uri: book.coverImage };
+          }
+        }
+      } catch {
+        // ignore search errors; fallback to group data only
+      }
     }
   }
 
@@ -103,6 +112,7 @@ const mapGroupToCard = async (group: Group): Promise<GroupCard> => {
     tags,
     lastActive: formatRelativeTime(String(group.createdAt)),
     cover,
+    memberCount: group.memberCount,
   };
 };
 
@@ -123,6 +133,10 @@ export default function HomeScreen() {
   const [groupCards, setGroupCards] = useState<GroupCard[]>([]);
   const [groupStatus, setGroupStatus] = useState<LoadState>('loading');
   const [groupError, setGroupError] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<GroupCard[]>([]);
+  const [searchStatus, setSearchStatus] = useState<SearchState>('idle');
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [joiningGroupIds, setJoiningGroupIds] = useState<string[]>([]);
   const [finishedBooks, setFinishedBooks] = useState<FinishedGroup[]>([]);
   const [finishedStatus, setFinishedStatus] = useState<FinishedLoadState>('loading');
   const [finishedError, setFinishedError] = useState<string | null>(null);
@@ -211,10 +225,70 @@ export default function HomeScreen() {
       setSelectedTag('전체');
     }
   }, [selectedTag, tagOptions]);
+
+  useEffect(() => {
+    if (!isSearchOpen) {
+      setSearchResults([]);
+      setSearchStatus('idle');
+      setSearchError(null);
+      return;
+    }
+
+    const keyword = searchQuery.trim();
+    if (!keyword) {
+      setSearchResults([]);
+      setSearchStatus('idle');
+      setSearchError(null);
+      return;
+    }
+
+    let isActive = true;
+    setSearchStatus('loading');
+    setSearchError(null);
+    const debounceId = setTimeout(() => {
+      searchGroups(keyword)
+        .then((groups) => Promise.all(groups.map((group) => mapGroupToCard(group, { enrich: false }))))
+        .then((cards) => {
+          if (!isActive) return;
+          setSearchResults(cards);
+          setSearchStatus('success');
+        })
+        .catch((error) => {
+          if (!isActive) return;
+          setSearchResults([]);
+          setSearchStatus('error');
+          setSearchError(getErrorMessage(error, '검색 결과를 불러오지 못했어요.'));
+        });
+    }, 400);
+
+    return () => {
+      isActive = false;
+      clearTimeout(debounceId);
+    };
+  }, [isSearchOpen, searchQuery]);
+
+  const handleJoinGroup = useCallback(
+    async (groupId: string) => {
+      if (joiningGroupIds.includes(groupId)) return;
+      setJoiningGroupIds((prev) => [...prev, groupId]);
+      try {
+        await joinGroup(groupId);
+        setSearchResults((prev) => prev.filter((group) => group.id !== groupId));
+        await loadGroups();
+        Alert.alert('안내', '그룹에 가입했어요.');
+      } catch (error) {
+        Alert.alert('안내', getErrorMessage(error, '그룹 가입에 실패했어요.'));
+      } finally {
+        setJoiningGroupIds((prev) => prev.filter((id) => id !== groupId));
+      }
+    },
+    [joiningGroupIds, loadGroups],
+  );
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 140 + insets.bottom }],
     [insets.bottom],
   );
+  const trimmedQuery = searchQuery.trim();
 
   return (
     <KeyboardAvoidingView
@@ -286,9 +360,56 @@ export default function HomeScreen() {
               </ScrollView>
               <Text style={styles.searchHint}>
                 {groupStatus === 'loading'
-                  ? '검색 결과 불러오는 중'
-                  : `검색 결과 ${filteredClubs.length}개`}
+                  ? '진행 중 교환독서 불러오는 중'
+                  : `진행 중 ${filteredClubs.length}개`}
               </Text>
+            </View>
+
+            <View style={styles.searchResultsSection}>
+              <Text style={styles.searchResultsTitle}>가입 가능한 교환독서</Text>
+              {!trimmedQuery ? (
+                <Text style={styles.searchResultEmpty}>
+                  검색어를 입력하면 가입 가능한 그룹을 보여드려요.
+                </Text>
+              ) : searchStatus === 'loading' ? (
+                <Text style={styles.searchResultEmpty}>검색 중...</Text>
+              ) : searchStatus === 'error' ? (
+                <Text style={styles.searchResultEmpty}>
+                  {searchError ?? '검색 결과를 불러올 수 없어요.'}
+                </Text>
+              ) : searchResults.length === 0 ? (
+                <Text style={styles.searchResultEmpty}>검색 결과가 없어요.</Text>
+              ) : (
+                searchResults.map((club) => {
+                  const isJoining = joiningGroupIds.includes(club.id);
+                  return (
+                    <View key={club.id} style={styles.searchResultCard}>
+                      <Image source={club.cover} style={styles.searchResultCover} />
+                      <View style={styles.searchResultBody}>
+                        <Text style={styles.searchResultTitle}>{club.title}</Text>
+                        <Text style={styles.searchResultMeta}>
+                          {club.groupName} · {club.memberCount}명 참여
+                        </Text>
+                        <Text style={styles.searchResultMeta}>{club.author}</Text>
+                        <Text style={styles.searchResultTag}>{club.tag}</Text>
+                      </View>
+                      <Pressable
+                        onPress={() => handleJoinGroup(club.id)}
+                        style={[styles.joinButton, isJoining && styles.joinButtonDisabled]}
+                        accessibilityRole="button"
+                        disabled={isJoining}>
+                        <Text
+                          style={[
+                            styles.joinButtonText,
+                            isJoining && styles.joinButtonTextDisabled,
+                          ]}>
+                          {isJoining ? '가입 중' : '가입'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  );
+                })
+              )}
             </View>
           </View>
         )}
@@ -493,6 +614,74 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 12,
     color: Palette.textSecondary,
+  },
+  searchResultsSection: {
+    marginTop: 16,
+  },
+  searchResultsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Palette.textPrimary,
+    marginBottom: 10,
+  },
+  searchResultEmpty: {
+    fontSize: 12,
+    color: Palette.textTertiary,
+  },
+  searchResultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.surface,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Palette.border,
+    ...Shadows.card,
+  },
+  searchResultCover: {
+    width: 46,
+    aspectRatio: 2 / 3,
+    borderRadius: 10,
+    backgroundColor: Palette.accentSoft,
+    marginRight: 12,
+    resizeMode: 'cover',
+  },
+  searchResultBody: {
+    flex: 1,
+    marginRight: 12,
+  },
+  searchResultTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Palette.textPrimary,
+  },
+  searchResultMeta: {
+    fontSize: 11,
+    color: Palette.textSecondary,
+    marginTop: 4,
+  },
+  searchResultTag: {
+    fontSize: 11,
+    color: Palette.textTertiary,
+    marginTop: 6,
+  },
+  joinButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: Palette.accent,
+  },
+  joinButtonDisabled: {
+    backgroundColor: Palette.border,
+  },
+  joinButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  joinButtonTextDisabled: {
+    color: Palette.textTertiary,
   },
   tagRow: {
     paddingTop: 12,
