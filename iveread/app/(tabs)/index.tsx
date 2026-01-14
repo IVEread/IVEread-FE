@@ -332,11 +332,11 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>교환독서 검색</Text>
             <View style={styles.searchCard}>
-              <Text style={styles.searchLabel}>그룹 또는 책 이름으로 검색</Text>
+              <Text style={styles.searchLabel}>그룹 이름으로 검색</Text>
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder="예: 월요일 고전 읽기, 1984"
+                placeholder="예: 월요일 고전 읽기"
                 placeholderTextColor={Palette.textTertiary}
                 style={styles.searchInput}
                 autoCorrect={false}
