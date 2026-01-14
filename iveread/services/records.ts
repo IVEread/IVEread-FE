@@ -1,6 +1,10 @@
 import { request } from '@/services/api-client';
 import { CreateRecordCommentInput, RecordComment } from '@/types/record-comment';
-import { CreateRecordReactionInput, RecordReaction } from '@/types/record-reaction';
+import {
+  CreateRecordReactionInput,
+  RecordReaction,
+  UpdateRecordReactionInput,
+} from '@/types/record-reaction';
 import { CreateRecordInput, ReadingRecord, UpdateRecordInput } from '@/types/record';
 
 export type RecordQuery = {
@@ -24,6 +28,12 @@ const buildRecordQuery = (query?: RecordQuery) => {
 
 export async function getGroupRecords(groupId: string, query?: RecordQuery): Promise<ReadingRecord[]> {
   return request<ReadingRecord[]>(`/api/groups/${encodeURIComponent(groupId)}/records`, {
+    query: buildRecordQuery(query),
+  });
+}
+
+export async function getUserRecords(userId: string, query?: RecordQuery): Promise<ReadingRecord[]> {
+  return request<ReadingRecord[]>(`/api/users/${encodeURIComponent(userId)}/records`, {
     query: buildRecordQuery(query),
   });
 }
@@ -77,6 +87,22 @@ export async function createRecordReaction(
   return request<RecordReaction>(`/api/records/${encodeURIComponent(recordId)}/reactions`, {
     method: 'POST',
     body: payload,
+  });
+}
+
+export async function updateRecordReaction(
+  reactionId: string,
+  payload: UpdateRecordReactionInput
+): Promise<RecordReaction> {
+  return request<RecordReaction>(`/api/record-reactions/${encodeURIComponent(reactionId)}`, {
+    method: 'PATCH',
+    body: payload,
+  });
+}
+
+export async function deleteRecordReaction(reactionId: string): Promise<void> {
+  await request<null>(`/api/record-reactions/${encodeURIComponent(reactionId)}`, {
+    method: 'DELETE',
   });
 }
 

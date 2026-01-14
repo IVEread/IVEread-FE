@@ -8,27 +8,48 @@ import { useCalendarRecords } from '@/contexts/calendar-context';
 import { useFriends } from '@/contexts/friends-context';
 import { useProfile } from '@/contexts/profile-context';
 import { getPersonEmoji } from '@/constants/people';
+import { ApiClientError } from '@/services/api-client';
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiClientError) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
 
 type Member = { id: string; name: string; emoji: string };
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const { recordsByOwner, addReaction } = useCalendarRecords();
+  const {
+    recordsByOwner,
+    loadRecords,
+    loadRecordReactions,
+    addReaction,
+    updateReaction,
+    removeReaction,
+  } = useCalendarRecords();
   const { friends } = useFriends();
   const { profile } = useProfile();
-  const currentUserId = profile.id?.trim() || 'me';
-  const [selectedMemberId, setSelectedMemberId] = useState(currentUserId);
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 0, 1));
-  const [selectedDay, setSelectedDay] = useState<number | null>(3);
+  const currentUserId = profile.id?.trim() || '';
+  const currentUserKey = currentUserId || 'me';
+  const [selectedMemberId, setSelectedMemberId] = useState(currentUserKey);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<number | null>(() => new Date().getDate());
+  const [reactionStatus, setReactionStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
   useEffect(() => {
-    if (selectedMemberId === 'me' && currentUserId !== 'me') {
+    if (selectedMemberId === 'me' && currentUserId) {
       setSelectedMemberId(currentUserId);
     }
   }, [currentUserId, selectedMemberId]);
   const members = useMemo<Member[]>(() => {
     return [
       {
-        id: currentUserId,
+        id: currentUserKey,
         name: '나',
         emoji: profile.emoji || (profile.nickname ? profile.nickname.slice(0, 1) : '😊'),
       },
@@ -41,7 +62,7 @@ export default function CalendarScreen() {
         };
       }),
     ];
-  }, [currentUserId, friends, profile.emoji, profile.nickname]);
+  }, [currentUserKey, friends, profile.emoji, profile.nickname]);
   const reactionOptions = useMemo(() => ['👏', '😍', '🔥', '✨', '👍', '🥳'], []);
 
   const year = currentMonth.getFullYear();
@@ -63,9 +84,50 @@ export default function CalendarScreen() {
   const selectedDateKey = selectedDay
     ? `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`
     : null;
-  const recordsForMember = recordsByOwner[selectedMemberId] ?? {};
+  const resolvedMemberId =
+    selectedMemberId === 'me' ? (currentUserId ? currentUserId : null) : selectedMemberId;
+  const recordsForMember = recordsByOwner[resolvedMemberId ?? selectedMemberId] ?? {};
   const selectedEntry = selectedDateKey ? recordsForMember[selectedDateKey] : null;
   const monthLabel = `${year}년 ${monthIndex + 1}월`;
+
+  useEffect(() => {
+    if (!resolvedMemberId) return;
+    let isActive = true;
+    loadRecords(resolvedMemberId, year, monthIndex + 1).catch((error) => {
+      if (!isActive) return;
+      Alert.alert('안내', getErrorMessage(error, '기록을 불러오지 못했어요.'));
+    });
+    return () => {
+      isActive = false;
+    };
+  }, [resolvedMemberId, year, monthIndex, loadRecords]);
+
+  useEffect(() => {
+    if (!selectedEntry?.recordId) {
+      setReactionStatus('idle');
+      return;
+    }
+    if (selectedEntry.reactionsLoaded) {
+      setReactionStatus('idle');
+      return;
+    }
+    let isActive = true;
+    setReactionStatus('loading');
+    loadRecordReactions(selectedEntry.recordId)
+      .then(() => {
+        if (isActive) {
+          setReactionStatus('idle');
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setReactionStatus('error');
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [selectedEntry?.recordId, selectedEntry?.reactionsLoaded, loadRecordReactions]);
 
   const moveMonth = (direction: 'prev' | 'next') => {
     const nextMonth = direction === 'prev' ? monthIndex - 1 : monthIndex + 1;
@@ -90,12 +152,39 @@ export default function CalendarScreen() {
     return titles.size;
   }, [recordsForMember, year, monthIndex]);
 
+  const myReaction = useMemo(() => {
+    if (!selectedEntry || !currentUserId) return null;
+    return (selectedEntry.reactions ?? []).find((reaction) => reaction.userId === currentUserId);
+  }, [selectedEntry, currentUserId]);
+
+  const handleReactionPress = async (emoji: string) => {
+    if (!selectedEntry?.recordId) return;
+    if (!currentUserId) {
+      Alert.alert('안내', '로그인이 필요합니다.');
+      return;
+    }
+    if (!selectedEntry.reactionsLoaded || reactionStatus === 'loading') return;
+    try {
+      if (myReaction) {
+        if (myReaction.emoji === emoji) {
+          await removeReaction(selectedEntry.recordId, myReaction.id);
+          return;
+        }
+        await updateReaction(myReaction.id, emoji);
+      } else {
+        await addReaction(selectedEntry.recordId, emoji);
+      }
+    } catch (error) {
+      Alert.alert('안내', getErrorMessage(error, '반응 등록에 실패했어요.'));
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>읽기 캘린더</Text>
-          {selectedMemberId === currentUserId && (
+          {selectedMemberId === currentUserKey && (
             <Pressable
               style={styles.addButton}
               onPress={() => {
@@ -108,7 +197,7 @@ export default function CalendarScreen() {
                 ).padStart(2, '0')}`;
                 router.push({
                   pathname: '/add-record',
-                  params: { date: dateKey, ownerId: selectedMemberId },
+                  params: { date: dateKey },
                 });
               }}
               accessibilityRole="button">
@@ -233,7 +322,9 @@ export default function CalendarScreen() {
           {selectedEntry ? (
             <View style={styles.detailContent}>
               <Text style={styles.detailBook}>{selectedEntry.title}</Text>
-              <Text style={styles.detailNote}>{selectedEntry.note}</Text>
+              <Text style={styles.detailNote}>
+                {selectedEntry.note ? selectedEntry.note : '한 줄 코멘트가 없어요.'}
+              </Text>
               <View style={styles.reactionSection}>
                 <Text style={styles.reactionTitle}>친구 반응</Text>
                 {(selectedEntry.reactions ?? []).length > 0 ? (
@@ -246,7 +337,13 @@ export default function CalendarScreen() {
                     ))}
                   </View>
                 ) : (
-                  <Text style={styles.reactionEmpty}>아직 반응이 없어요.</Text>
+                  <Text style={styles.reactionEmpty}>
+                    {reactionStatus === 'loading'
+                      ? '반응을 불러오는 중...'
+                      : reactionStatus === 'error'
+                        ? '반응을 불러오지 못했어요.'
+                        : '아직 반응이 없어요.'}
+                  </Text>
                 )}
                 <View style={styles.reactionButtons}>
                   {reactionOptions.map((emoji) => (
@@ -254,21 +351,20 @@ export default function CalendarScreen() {
                       key={emoji}
                       onPress={() => {
                         if (!selectedDateKey) return;
-                        if (selectedMemberId === currentUserId) {
-                          addReaction(selectedMemberId, selectedDateKey, {
-                            id: `${selectedDateKey}-${Date.now()}`,
-                            emoji,
-                            name: profile.nickname || '나',
-                          });
-                        } else {
-                          addReaction(selectedMemberId, selectedDateKey, {
-                            id: `${selectedDateKey}-${Date.now()}`,
-                            emoji,
-                            name: profile.nickname || '나',
-                          });
-                        }
+                        handleReactionPress(emoji);
                       }}
-                      style={styles.reactionButton}
+                      style={[
+                        styles.reactionButton,
+                        (!selectedEntry ||
+                          !selectedEntry.reactionsLoaded ||
+                          reactionStatus === 'loading') &&
+                          styles.reactionButtonDisabled,
+                      ]}
+                      disabled={
+                        !selectedEntry ||
+                        !selectedEntry.reactionsLoaded ||
+                        reactionStatus === 'loading'
+                      }
                       accessibilityRole="button">
                       <Text style={styles.reactionButtonText}>{emoji}</Text>
                     </Pressable>
@@ -581,6 +677,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Palette.accentSoft,
+  },
+  reactionButtonDisabled: {
+    opacity: 0.4,
   },
   reactionButtonText: {
     fontSize: 16,

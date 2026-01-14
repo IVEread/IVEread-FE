@@ -21,15 +21,25 @@ import { Palette, Shadows, Typography } from '@/constants/ui';
 import { useCalendarRecords } from '@/contexts/calendar-context';
 import { useProfile } from '@/contexts/profile-context';
 import { useActiveGroupBooks, type GroupBookOption } from '@/hooks/use-active-group-books';
+import { ApiClientError } from '@/services/api-client';
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiClientError) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+  return fallback;
+};
 
 export default function AddRecordScreen() {
   const router = useRouter();
-  const { date, ownerId } = useLocalSearchParams<{ date?: string; ownerId?: string }>();
+  const { date } = useLocalSearchParams<{ date?: string }>();
   const insets = useSafeAreaInsets();
   const { addRecord } = useCalendarRecords();
   const { profile } = useProfile();
   const fallbackCover = require('../assets/images/icon.png');
-  const currentUserId = profile.id?.trim() || 'me';
   const {
     books: bookOptions,
     status: bookStatus,
@@ -53,6 +63,7 @@ export default function AddRecordScreen() {
   const [isBookPickerOpen, setIsBookPickerOpen] = useState(false);
   const [selectedBook, setSelectedBook] = useState<GroupBookOption | null>(null);
   const [note, setNote] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const contentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: 160 + insets.bottom }],
     [insets.bottom],
@@ -78,23 +89,41 @@ export default function AddRecordScreen() {
 
   const isValid =
     (selectedBook?.title?.trim().length ?? 0) > 0 &&
+    Boolean(selectedBook?.groupId && selectedBook?.isbn && selectedBook?.coverUrl) &&
     note.trim().length > 0 &&
     !!selectedDateKeyFromPicker;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedDateKeyFromPicker) {
       Alert.alert('안내', '날짜를 선택해 주세요.');
       return;
     }
-    const resolvedOwnerId = ownerId?.trim() || currentUserId;
-    addRecord(resolvedOwnerId, {
-      date: selectedDateKeyFromPicker,
-      title: selectedBook ? selectedBook.title : '',
-      note: note.trim(),
-      cover: selectedBook ? selectedBook.cover : fallbackCover,
-      reactions: [],
-    });
-    router.back();
+    if (!selectedBook?.groupId || !selectedBook?.isbn) {
+      Alert.alert('안내', '책 정보를 다시 선택해 주세요.');
+      return;
+    }
+    const imageUrl = selectedBook.coverUrl?.trim();
+    if (!imageUrl) {
+      Alert.alert('안내', '표지 이미지를 불러올 수 없어요.');
+      return;
+    }
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await addRecord(selectedBook.groupId, {
+        readDate: selectedDateKeyFromPicker,
+        startPage: 1,
+        endPage: 1,
+        comment: note.trim(),
+        imageUrl,
+        bookIsbn: selectedBook.isbn,
+      });
+      router.back();
+    } catch (error) {
+      Alert.alert('안내', getErrorMessage(error, '기록 저장에 실패했어요.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -169,9 +198,12 @@ export default function AddRecordScreen() {
         </View>
 
         <Pressable
-          style={[styles.submitButton, !isValid && styles.submitButtonDisabled]}
+          style={[
+            styles.submitButton,
+            (!isValid || isSaving) && styles.submitButtonDisabled,
+          ]}
           onPress={handleSubmit}
-          disabled={!isValid}
+          disabled={!isValid || isSaving}
           accessibilityRole="button">
           <Text style={styles.submitButtonText}>기록 저장</Text>
         </Pressable>

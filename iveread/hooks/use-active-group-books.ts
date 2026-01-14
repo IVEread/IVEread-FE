@@ -12,6 +12,8 @@ export type GroupBookOption = {
   title: string;
   cover: ImageSourcePropType;
   isbn?: string;
+  groupId: string;
+  coverUrl?: string;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -40,60 +42,54 @@ const isGroupStarted = (group: Group) => {
 };
 
 const mapGroupsToBooks = (groups: Group[], fallbackCover: ImageSourcePropType) => {
-  const bookMap = new Map<string, GroupBookOption>();
+  return groups
+    .map((group) => {
+      const title = group.bookTitle?.trim();
+      if (!title) return null;
 
-  groups.forEach((group) => {
-    const title = group.bookTitle?.trim();
-    if (!title) return;
+      const isbn = group.bookIsbn?.trim() || undefined;
+      const coverUrl =
+        typeof group.bookCover === 'string' && group.bookCover.trim().length > 0
+          ? group.bookCover
+          : undefined;
 
-    const isbn = group.bookIsbn?.trim() || undefined;
-    const dedupeKey = isbn ?? title.toLowerCase();
-    if (bookMap.has(dedupeKey)) return;
-
-    const cover =
-      typeof group.bookCover === 'string' && group.bookCover.trim().length > 0
-        ? { uri: group.bookCover }
-        : fallbackCover;
-
-    bookMap.set(dedupeKey, {
-      id: dedupeKey,
-      title,
-      isbn,
-      cover,
-    });
-  });
-
-  return Array.from(bookMap.values());
+      return {
+        id: group.id,
+        title,
+        isbn,
+        cover: coverUrl ? { uri: coverUrl } : fallbackCover,
+        groupId: group.id,
+        coverUrl,
+      };
+    })
+    .filter((item): item is GroupBookOption => Boolean(item));
 };
 
 const mapFinishedToBooks = (
   finished: FinishedGroup[],
   fallbackCover: ImageSourcePropType,
 ) => {
-  const bookMap = new Map<string, GroupBookOption>();
+  return finished
+    .map((item) => {
+      const title = item.bookTitle?.trim();
+      if (!title) return null;
 
-  finished.forEach((item) => {
-    const title = item.bookTitle?.trim();
-    if (!title) return;
+      const isbn = item.bookIsbn?.trim() || undefined;
+      const coverUrl =
+        typeof item.bookCoverImage === 'string' && item.bookCoverImage.trim().length > 0
+          ? item.bookCoverImage
+          : undefined;
 
-    const isbn = item.bookIsbn?.trim() || undefined;
-    const dedupeKey = isbn ?? title.toLowerCase();
-    if (bookMap.has(dedupeKey)) return;
-
-    const cover =
-      typeof item.bookCoverImage === 'string' && item.bookCoverImage.trim().length > 0
-        ? { uri: item.bookCoverImage }
-        : fallbackCover;
-
-    bookMap.set(dedupeKey, {
-      id: dedupeKey,
-      title,
-      isbn,
-      cover,
-    });
-  });
-
-  return Array.from(bookMap.values());
+      return {
+        id: item.groupId,
+        title,
+        isbn,
+        cover: coverUrl ? { uri: coverUrl } : fallbackCover,
+        groupId: item.groupId,
+        coverUrl,
+      };
+    })
+    .filter((item): item is GroupBookOption => Boolean(item));
 };
 
 const mergeBookOptions = (sources: GroupBookOption[][]) => {
