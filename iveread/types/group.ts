@@ -29,6 +29,11 @@ export type Group = {
   bookCover: string;
   memberCount: number;
   createdAt: string;
+  members?: {
+    id: string;
+    nickname: string;
+    emoji: string;
+  }[];
 };
 
 export type FinishedGroup = {

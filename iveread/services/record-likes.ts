@@ -7,11 +7,15 @@ type RecordLikeState = {
 
 const LIKE_STATE_PREFIX = 'recordLikeState:';
 
-const getLikeStateKey = (recordId: string) => `${LIKE_STATE_PREFIX}${recordId}`;
+const getLikeStateKey = (recordId: string, userId?: string | null) =>
+  `${LIKE_STATE_PREFIX}${userId ?? 'anonymous'}:${recordId}`;
 
-export async function getRecordLikeState(recordId: string): Promise<RecordLikeState | null> {
+export async function getRecordLikeState(
+  recordId: string,
+  userId?: string | null,
+): Promise<RecordLikeState | null> {
   try {
-    const raw = await AsyncStorage.getItem(getLikeStateKey(recordId));
+    const raw = await AsyncStorage.getItem(getLikeStateKey(recordId, userId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<RecordLikeState> | null;
     if (!parsed || typeof parsed !== 'object') return null;
@@ -24,9 +28,13 @@ export async function getRecordLikeState(recordId: string): Promise<RecordLikeSt
   }
 }
 
-export async function setRecordLikeState(recordId: string, state: RecordLikeState): Promise<void> {
+export async function setRecordLikeState(
+  recordId: string,
+  state: RecordLikeState,
+  userId?: string | null,
+): Promise<void> {
   try {
-    await AsyncStorage.setItem(getLikeStateKey(recordId), JSON.stringify(state));
+    await AsyncStorage.setItem(getLikeStateKey(recordId, userId), JSON.stringify(state));
   } catch {
     // Ignore caching failures to avoid blocking UX.
   }

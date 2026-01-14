@@ -106,6 +106,8 @@ type FeedComment = {
 
 type FeedItem = {
   id: string;
+  userId?: string | null;
+  userEmoji?: string | null;
   name: string;
   time: string;
   image: ImageSourcePropType;
@@ -275,11 +277,44 @@ export default function BookDetailScreen() {
     () =>
       new Set(
         feedItems
+          .filter((item) => (currentUserId ? item.userId === currentUserId : false))
           .map((item) => item.createdAt)
           .filter((value): value is string => Boolean(value)),
       ),
-    [feedItems],
+    [currentUserId, feedItems],
   );
+  const memberAvatars = useMemo(() => {
+    const seen = new Set<string>();
+    const members: { id: string; emoji: string }[] = [];
+    const currentKey = currentUserId ?? 'me';
+
+    members.push({ id: currentKey, emoji: myEmoji });
+    seen.add(currentKey);
+
+    if (group?.members?.length) {
+      group.members.forEach((member) => {
+        if (member.id === currentUserId) return;
+        if (seen.has(member.id)) return;
+        seen.add(member.id);
+        const emoji = member.emoji?.trim()
+          ? member.emoji
+          : getPersonEmoji(member.nickname || ' ', myEmoji);
+        members.push({ id: member.id, emoji });
+      });
+      return members.slice(0, 5);
+    }
+
+    feedItems.forEach((item) => {
+      const memberKey = item.userId ?? item.name;
+      if (seen.has(memberKey)) return;
+      if (item.userId && item.userId === currentUserId) return;
+      seen.add(memberKey);
+      const emoji = item.userEmoji || getPersonEmoji(item.name, myEmoji);
+      members.push({ id: memberKey, emoji });
+    });
+
+    return members.slice(0, 5);
+  }, [currentUserId, feedItems, group?.members, myEmoji]);
   const baseWeekDate = useMemo(() => {
     const date = new Date();
     if (selectedWeek === 'previous') {
@@ -398,7 +433,17 @@ export default function BookDetailScreen() {
       if (!resolvedGroup && resolvedBook) {
         try {
           const groups = await getGroups();
-          resolvedGroup = groups.find((item) => item.bookTitle === resolvedBook?.title) ?? null;
+          const match = groups.find((item) => item.bookTitle === resolvedBook?.title) ?? null;
+          if (match) {
+            try {
+              resolvedGroup = await getGroup(match.id);
+            } catch (error) {
+              resolvedGroup = match;
+              if (!groupMessage && !isNotFoundError(error)) {
+                groupMessage = getErrorMessage(error, '교환독서 정보를 불러오지 못했어요.');
+              }
+            }
+          }
         } catch (error) {
           if (!groupMessage) {
             groupMessage = getErrorMessage(error, '교환독서 정보를 불러오지 못했어요.');
@@ -437,6 +482,30 @@ export default function BookDetailScreen() {
       isActiveRef.current = false;
     };
   }, [routeId]);
+
+  useEffect(() => {
+    if (!groupId) return;
+    if (group?.members?.length) return;
+    let isActive = true;
+    getGroup(groupId)
+      .then((detail) => {
+        if (!isActive) return;
+        setGroup((prev) =>
+          prev
+            ? {
+                ...prev,
+                members: detail.members ?? prev.members,
+              }
+            : detail,
+        );
+      })
+      .catch(() => {
+        // Ignore to avoid blocking the screen if member fetch fails.
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [group?.members?.length, groupId]);
 
   useEffect(() => {
     if (!groupId) {
@@ -513,7 +582,7 @@ export default function BookDetailScreen() {
             }
 
             try {
-              const cachedLike = await getRecordLikeState(record.id);
+              const cachedLike = await getRecordLikeState(record.id, currentUserId);
               if (cachedLike) {
                 likedByUser = cachedLike.liked;
               }
@@ -523,7 +592,7 @@ export default function BookDetailScreen() {
                 await setRecordLikeState(record.id, {
                   liked: cachedLike.liked,
                   likeCount,
-                });
+                }, currentUserId);
               }
             } catch {
               likeCount = 0;
@@ -541,6 +610,8 @@ export default function BookDetailScreen() {
             return {
               id: record.id,
               recordId: record.id,
+              userId: record.userId,
+              userEmoji: record.userProfileEmoji,
               name: record.userNickname,
               time: formatRelativeTime(String(record.createdAt)),
               image: { uri: normalizeUploadUrl(record.imageUrl) },
@@ -570,7 +641,7 @@ export default function BookDetailScreen() {
         hasLoadedFeedRef.current = true;
       }
     },
-    [groupId],
+    [groupId, currentUserId],
   );
 
   useEffect(() => {
@@ -701,7 +772,6 @@ export default function BookDetailScreen() {
 
   const groupStartDate = group?.startDate ? formatDisplayDate(group.startDate) : null;
   const groupGoalDate = group?.goalDate ? formatDisplayDate(group.goalDate) : null;
-  const memberAvatarCount = group?.memberCount ? Math.min(group.memberCount, 5) : 0;
 
   const handleAddSentence = async () => {
     const trimmedText = sentenceText.trim();
@@ -1066,9 +1136,9 @@ export default function BookDetailScreen() {
                     </View>
                     <View style={styles.memberRow}>
                       <View style={styles.memberAvatarStack}>
-                        {Array.from({ length: memberAvatarCount }).map((_, index) => (
-                          <View key={`member-${index}`} style={styles.memberAvatar}>
-                            <Text style={styles.memberInitial}>{myEmoji}</Text>
+                        {memberAvatars.map((member, index) => (
+                          <View key={`${member.id}-${index}`} style={styles.memberAvatar}>
+                            <Text style={styles.memberInitial}>{member.emoji}</Text>
                           </View>
                         ))}
                       </View>
@@ -1476,7 +1546,7 @@ export default function BookDetailScreen() {
       editingReplyId,
       editingReplyText,
       myEmoji,
-      memberAvatarCount,
+      memberAvatars,
       openReplyId,
       replyInputs,
       router,
@@ -1618,7 +1688,7 @@ export default function BookDetailScreen() {
           item.id === postId ? { ...item, likes: result.likeCount } : item,
         ),
       );
-      await setRecordLikeState(target.recordId, result);
+      await setRecordLikeState(target.recordId, result, currentUserId);
     } catch (error) {
       Alert.alert('안내', getErrorMessage(error, '좋아요 처리에 실패했어요.'));
     }
