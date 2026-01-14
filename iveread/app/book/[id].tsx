@@ -451,18 +451,6 @@ export default function BookDetailScreen() {
         }
       }
 
-      if (resolvedGroup && !resolvedGroup.members) {
-        try {
-          const detail = await getGroup(resolvedGroup.id);
-          resolvedGroup = {
-            ...resolvedGroup,
-            members: detail.members ?? resolvedGroup.members,
-          };
-        } catch {
-          // Keep base group info if member fetch fails.
-        }
-      }
-
       if (!isActiveRef.current) return;
 
       if (resolvedBook) {
@@ -1147,13 +1135,6 @@ export default function BookDetailScreen() {
                       </Text>
                     </View>
                     <View style={styles.memberRow}>
-                      <View style={styles.memberAvatarStack}>
-                        {memberAvatars.map((member, index) => (
-                          <View key={`${member.id}-${index}`} style={styles.memberAvatar}>
-                            <Text style={styles.memberInitial}>{member.emoji}</Text>
-                          </View>
-                        ))}
-                      </View>
                       <Text style={styles.memberCount}>
                         {group.memberCount}명이 함께 읽고 있어요
                       </Text>
