@@ -2,15 +2,15 @@ import React, { createContext, useCallback, useContext, useMemo, useState } from
 import type { ImageSourcePropType } from 'react-native';
 
 import {
-  createRecord,
-  createRecordReaction,
-  deleteRecordReaction,
-  getRecordReactions,
-  getUserRecords,
-  updateRecordReaction,
-} from '@/services/records';
-import type { CreateRecordInput, ReadingRecord } from '@/types/record';
-import type { RecordReaction } from '@/types/record-reaction';
+  createCalendarRecord,
+  createCalendarRecordReaction,
+  deleteCalendarRecordReaction,
+  getCalendarRecordReactions,
+  getCalendarRecords,
+  updateCalendarRecordReaction,
+} from '@/services/calendar-records';
+import type { CalendarRecord as CalendarRecordDto, CreateCalendarRecordInput } from '@/types/calendar-record';
+import type { CalendarRecordReaction } from '@/types/calendar-record-reaction';
 
 const fallbackCover = require('../assets/images/icon.png');
 
@@ -55,16 +55,16 @@ export type CalendarRecord = {
 type CalendarContextValue = {
   recordsByOwner: Record<string, Record<string, CalendarRecord>>;
   loadRecords: (ownerId: string, year: number, month: number) => Promise<void>;
-  addRecord: (groupId: string, payload: CreateRecordInput) => Promise<ReadingRecord>;
+  addRecord: (payload: CreateCalendarRecordInput) => Promise<CalendarRecordDto>;
   loadRecordReactions: (recordId: string) => Promise<void>;
-  addReaction: (recordId: string, emoji: string) => Promise<RecordReaction>;
-  updateReaction: (reactionId: string, emoji: string) => Promise<RecordReaction>;
+  addReaction: (recordId: string, emoji: string) => Promise<CalendarRecordReaction>;
+  updateReaction: (reactionId: string, emoji: string) => Promise<CalendarRecordReaction>;
   removeReaction: (recordId: string, reactionId: string) => Promise<void>;
 };
 
 const CalendarContext = createContext<CalendarContextValue | undefined>(undefined);
 
-const mapReaction = (reaction: RecordReaction): CalendarReaction => ({
+const mapReaction = (reaction: CalendarRecordReaction): CalendarReaction => ({
   id: reaction.id,
   emoji: reaction.emoji,
   name: reaction.userNickname,
@@ -72,8 +72,8 @@ const mapReaction = (reaction: RecordReaction): CalendarReaction => ({
   profileEmoji: reaction.userProfileEmoji ?? null,
 });
 
-const resolveCover = (record: ReadingRecord): ImageSourcePropType => {
-  const coverUrl = record.bookCoverImage?.trim() || record.imageUrl?.trim();
+const resolveCover = (record: CalendarRecordDto): ImageSourcePropType => {
+  const coverUrl = record.bookCoverImage?.trim();
   if (coverUrl) {
     return { uri: coverUrl };
   }
@@ -81,7 +81,7 @@ const resolveCover = (record: ReadingRecord): ImageSourcePropType => {
 };
 
 const mapRecordToCalendar = (
-  record: ReadingRecord,
+  record: CalendarRecordDto,
   existing?: CalendarRecord,
 ): CalendarRecord | null => {
   const dateKey = getDateKey(record.readDate) ?? getDateKey(record.createdAt);
@@ -89,7 +89,7 @@ const mapRecordToCalendar = (
   return {
     date: dateKey,
     title: record.bookTitle ?? '',
-    note: record.comment ?? '',
+    note: record.note ?? '',
     cover: resolveCover(record),
     recordId: record.id,
     ownerId: record.userId,
@@ -103,7 +103,7 @@ export function CalendarRecordsProvider({ children }: { children: React.ReactNod
     Record<string, Record<string, CalendarRecord>>
   >({});
 
-  const upsertRecord = useCallback((record: ReadingRecord) => {
+  const upsertRecord = useCallback((record: CalendarRecordDto) => {
     setRecordsByOwner((prev) => {
       const ownerId = record.userId;
       const ownerRecords = prev[ownerId] ?? {};
@@ -148,7 +148,7 @@ export function CalendarRecordsProvider({ children }: { children: React.ReactNod
   );
 
   const loadRecords = useCallback(async (ownerId: string, year: number, month: number) => {
-    const records = await getUserRecords(ownerId, { year, month });
+    const records = await getCalendarRecords(ownerId, { year, month });
     const monthPrefix = `${year}-${String(month).padStart(2, '0')}-`;
 
     setRecordsByOwner((prev) => {
@@ -184,8 +184,8 @@ export function CalendarRecordsProvider({ children }: { children: React.ReactNod
   }, []);
 
   const addRecord = useCallback(
-    async (groupId: string, payload: CreateRecordInput) => {
-      const created = await createRecord(groupId, payload);
+    async (payload: CreateCalendarRecordInput) => {
+      const created = await createCalendarRecord(payload);
       upsertRecord(created);
       return created;
     },
@@ -194,7 +194,7 @@ export function CalendarRecordsProvider({ children }: { children: React.ReactNod
 
   const loadRecordReactions = useCallback(
     async (recordId: string) => {
-      const reactions = await getRecordReactions(recordId);
+      const reactions = await getCalendarRecordReactions(recordId);
       const mapped = reactions.map(mapReaction);
       updateRecordById(recordId, (record) => ({
         ...record,
@@ -207,7 +207,7 @@ export function CalendarRecordsProvider({ children }: { children: React.ReactNod
 
   const addReaction = useCallback(
     async (recordId: string, emoji: string) => {
-      const created = await createRecordReaction(recordId, { emoji });
+      const created = await createCalendarRecordReaction(recordId, { emoji });
       const mapped = mapReaction(created);
       updateRecordById(recordId, (record) => {
         const next = record.reactions.filter((item) => item.id !== created.id);
@@ -224,9 +224,9 @@ export function CalendarRecordsProvider({ children }: { children: React.ReactNod
 
   const updateReaction = useCallback(
     async (reactionId: string, emoji: string) => {
-      const updated = await updateRecordReaction(reactionId, { emoji });
+      const updated = await updateCalendarRecordReaction(reactionId, { emoji });
       const mapped = mapReaction(updated);
-      updateRecordById(updated.recordId, (record) => ({
+      updateRecordById(updated.calendarRecordId, (record) => ({
         ...record,
         reactions: record.reactions.map((item) => (item.id === updated.id ? mapped : item)),
         reactionsLoaded: true,
@@ -238,7 +238,7 @@ export function CalendarRecordsProvider({ children }: { children: React.ReactNod
 
   const removeReaction = useCallback(
     async (recordId: string, reactionId: string) => {
-      await deleteRecordReaction(reactionId);
+      await deleteCalendarRecordReaction(reactionId);
       updateRecordById(recordId, (record) => ({
         ...record,
         reactions: record.reactions.filter((item) => item.id !== reactionId),

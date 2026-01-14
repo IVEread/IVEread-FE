@@ -89,7 +89,7 @@ export default function AddRecordScreen() {
 
   const isValid =
     (selectedBook?.title?.trim().length ?? 0) > 0 &&
-    Boolean(selectedBook?.groupId && selectedBook?.isbn && selectedBook?.coverUrl) &&
+    Boolean(selectedBook?.groupId) &&
     note.trim().length > 0 &&
     !!selectedDateKeyFromPicker;
 
@@ -98,25 +98,17 @@ export default function AddRecordScreen() {
       Alert.alert('안내', '날짜를 선택해 주세요.');
       return;
     }
-    if (!selectedBook?.groupId || !selectedBook?.isbn) {
+    if (!selectedBook?.groupId) {
       Alert.alert('안내', '책 정보를 다시 선택해 주세요.');
-      return;
-    }
-    const imageUrl = selectedBook.coverUrl?.trim();
-    if (!imageUrl) {
-      Alert.alert('안내', '표지 이미지를 불러올 수 없어요.');
       return;
     }
     if (isSaving) return;
     setIsSaving(true);
     try {
-      await addRecord(selectedBook.groupId, {
+      await addRecord({
+        groupId: selectedBook.groupId,
         readDate: selectedDateKeyFromPicker,
-        startPage: 1,
-        endPage: 1,
-        comment: note.trim(),
-        imageUrl,
-        bookIsbn: selectedBook.isbn,
+        note: note.trim(),
       });
       router.back();
     } catch (error) {
